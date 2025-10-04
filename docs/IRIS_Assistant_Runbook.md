@@ -1,7 +1,7 @@
 # IRIS Assistant - Operations Runbook
 
 **Version:** 1.0  
-**Last Updated:** January 2025  
+**Last Updated:** October 2025  
 **System:** IRIS AI Assistant - Crew Management Bot
 
 ---
@@ -723,5 +723,5 @@ docker exec -it iris_assistant_n8n sh
 
 - Maintained by: Operations Team
 - Review Frequency: Quarterly
-- Last Reviewed: January 2025
-- Next Review: April 2025
+- Last Reviewed: October 2025
+- Next Review: January 2026
