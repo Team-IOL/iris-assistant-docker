@@ -1,0 +1,288 @@
+{
+  "name": "Send Email with Documents Tool",
+  "nodes": [
+    {
+      "parameters": {
+        "fromEmail": "go@iol.ph",
+        "toEmail": "={{ $json.recipient_email }}",
+        "subject": "={{ $json.subject }}",
+        "html": "={{ $json.html_body }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.mailjet",
+      "typeVersion": 1,
+      "position": [
+        1472,
+        -112
+      ],
+      "id": "dd56e254-2f65-45c4-86bb-9a4206f657f1",
+      "name": "Send an email",
+      "credentials": {
+        "mailjetEmailApi": {
+          "id": "WX1bgYZp5SSfb4nJ",
+          "name": "Mailjet Email account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "recipient_email"
+            },
+            {
+              "name": "applicant_name"
+            },
+            {
+              "name": "applicant_id",
+              "type": "number"
+            },
+            {
+              "name": "filter_type"
+            },
+            {
+              "name": "categories"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -80,
+        -112
+      ],
+      "id": "7c966dab-c964-418a-8348-6ca631403532",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract parameters from workflow trigger\nconst recipientEmail = $input.item.json.recipient_email;\nconst applicantName = $input.item.json.applicant_name;\nconst applicantId = $input.item.json.applicant_id;\nconst filterType = $input.item.json.filter_type || 'all';\nconst categories = $input.item.json.categories || 'all';\n\n// Validate required fields\nif (!recipientEmail || !applicantName || !applicantId) {\n  throw new Error(`Missing required fields:\n    recipient_email: ${recipientEmail || 'MISSING'}\n    applicant_name: ${applicantName || 'MISSING'}\n    applicant_id: ${applicantId || 'MISSING'}\n  `);\n}\n\n// Validate email format\nconst emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$/;\nif (!emailRegex.test(recipientEmail)) {\n  throw new Error(`Invalid email format: ${recipientEmail}`);\n}\n\n// Validate filter_type\nconst validFilters = ['all', 'expired', 'expiring', 'valid'];\nif (!validFilters.includes(filterType)) {\n  throw new Error(`Invalid filter_type: ${filterType}. Must be: ${validFilters.join(', ')}`);\n}\n\n// Validate and parse categories\nconst validCategories = ['all', 'training', 'medical', 'license', 'document'];\nconst categoryList = categories.toLowerCase().split(',').map(c => c.trim());\nconst invalidCategories = categoryList.filter(c => !validCategories.includes(c));\nif (invalidCategories.length > 0) {\n  throw new Error(`Invalid categories: ${invalidCategories.join(', ')}`);\n}\n\n// Return validated parameters\nreturn {\n  json: {\n    recipient_email: recipientEmail.toLowerCase().trim(),\n    applicant_name: applicantName,\n    applicant_id: parseInt(applicantId),\n    filter_type: filterType,\n    categories: categoryList.join(',')\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -112
+      ],
+      "id": "d83007ba-6668-4357-ae2d-85ec553254b2",
+      "name": "Extract & Validate Parameters"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT DISTINCT\n  'training' AS category,\n  t.applicant_id,\n  COALESCE(NULLIF(TRIM(t.traindesc), ''), CONCAT('Training #', t.id)) AS document_name,\n  t.issue_date,\n  t.expiry_date,\n  t.doc_file,\n  CONCAT('https://adamson-bucket-name.s3-us-west-2.amazonaws.com/attachments/trainings/', \n         t.applicant_id, '/', t.doc_file) AS attachment_link,\n  CASE \n    WHEN t.expiry_date = '0000-00-00' OR t.expiry_date IS NULL THEN 'no_expiry'\n    WHEN t.expiry_date < CONVERT_TZ(NOW(), '+00:00', '+08:00') THEN 'expired'\n    WHEN t.expiry_date <= DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 90 DAY) THEN 'expiring'\n    ELSE 'valid'\n  END AS expiry_status,\n  MIN(t.training_course_id) AS training_course_id,\n  t.traindesc AS training_description\nFROM training t\nWHERE t.applicant_id = {{ $json.applicant_id }}\n  AND t.archive = 0\n  AND t.doc_file IS NOT NULL\n  AND t.doc_file != ''\n  AND (\n    ('{{ $json.filter_type }}' = 'expired' AND t.expiry_date != '0000-00-00' AND t.expiry_date < CONVERT_TZ(NOW(), '+00:00', '+08:00'))\n    OR ('{{ $json.filter_type }}' = 'expiring' AND t.expiry_date != '0000-00-00' AND t.expiry_date >= CONVERT_TZ(NOW(), '+00:00', '+08:00') AND t.expiry_date <= DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 90 DAY))\n    OR ('{{ $json.filter_type }}' = 'valid' AND (t.expiry_date = '0000-00-00' OR t.expiry_date > DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 90 DAY)))\n    OR '{{ $json.filter_type }}' = 'all'\n  )\n  AND (\n    '{{ $json.categories }}' = 'all' \n    OR FIND_IN_SET('training', '{{ $json.categories }}') > 0\n  )\nGROUP BY t.applicant_id, t.issue_date, t.expiry_date, t.doc_file, t.traindesc\n\nUNION ALL\n\nSELECT DISTINCT\n  'license' AS category,\n  al.applicant_id,\n  COALESCE(NULLIF(TRIM(l.name), ''), CONCAT('License #', al.id)) AS document_name,\n  al.issue_date,\n  al.expiry_date,\n  al.doc_file,\n  CONCAT('https://adamson-bucket-name.s3-us-west-2.amazonaws.com/attachments/licenses/', \n         al.applicant_id, '/', al.doc_file) AS attachment_link,\n  CASE \n    WHEN al.expiry_date = '0000-00-00' OR al.expiry_date IS NULL THEN 'no_expiry'\n    WHEN al.expiry_date < CONVERT_TZ(NOW(), '+00:00', '+08:00') THEN 'expired'\n    WHEN al.expiry_date <= DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 90 DAY) THEN 'expiring'\n    ELSE 'valid'\n  END AS expiry_status,\n  MIN(al.license_id) AS license_id,\n  l.name AS license_description\nFROM applicant_licenses al\nLEFT JOIN licenses l ON al.license_id = l.id\nWHERE al.applicant_id = {{ $json.applicant_id }}\n  AND al.archive = 0\n  AND al.doc_file IS NOT NULL\n  AND al.doc_file != ''\n  AND (\n    ('{{ $json.filter_type }}' = 'expired' AND al.expiry_date != '0000-00-00' AND al.expiry_date < CONVERT_TZ(NOW(), '+00:00', '+08:00'))\n    OR ('{{ $json.filter_type }}' = 'expiring' AND al.expiry_date != '0000-00-00' AND al.expiry_date >= CONVERT_TZ(NOW(), '+00:00', '+08:00') AND al.expiry_date <= DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 90 DAY))\n    OR ('{{ $json.filter_type }}' = 'valid' AND (al.expiry_date = '0000-00-00' OR al.expiry_date > DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 90 DAY)))\n    OR '{{ $json.filter_type }}' = 'all'\n  )\n  AND (\n    '{{ $json.categories }}' = 'all' \n    OR FIND_IN_SET('license', '{{ $json.categories }}') > 0\n  )\nGROUP BY al.applicant_id, al.issue_date, al.expiry_date, al.doc_file, l.name\n\nUNION ALL\n\nSELECT DISTINCT\n  'document' AS category,\n  ad.applicant_id,\n  COALESCE(NULLIF(TRIM(d.name), ''), CONCAT('Document #', ad.id)) AS document_name,\n  ad.issue_date,\n  ad.expiry_date,\n  ad.doc_file,\n  CONCAT('https://adamson-bucket-name.s3-us-west-2.amazonaws.com/attachments/documents/', \n         ad.applicant_id, '/', ad.doc_file) AS attachment_link,\n  CASE \n    WHEN ad.expiry_date = '0000-00-00' OR ad.expiry_date IS NULL THEN 'no_expiry'\n    WHEN ad.expiry_date < CONVERT_TZ(NOW(), '+00:00', '+08:00') THEN 'expired'\n    WHEN ad.expiry_date <= DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 90 DAY) THEN 'expiring'\n    ELSE 'valid'\n  END AS expiry_status,\n  MIN(ad.doc_id) AS document_id,\n  d.name AS document_description\nFROM applicant_documents ad\nLEFT JOIN documents d ON ad.doc_id = d.id\nWHERE ad.applicant_id = {{ $json.applicant_id }}\n  AND ad.archive = 0\n  AND ad.doc_file IS NOT NULL\n  AND ad.doc_file != ''\n  AND (\n    ('{{ $json.filter_type }}' = 'expired' AND ad.expiry_date != '0000-00-00' AND ad.expiry_date < CONVERT_TZ(NOW(), '+00:00', '+08:00'))\n    OR ('{{ $json.filter_type }}' = 'expiring' AND ad.expiry_date != '0000-00-00' AND ad.expiry_date >= CONVERT_TZ(NOW(), '+00:00', '+08:00') AND ad.expiry_date <= DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 90 DAY))\n    OR ('{{ $json.filter_type }}' = 'valid' AND (ad.expiry_date = '0000-00-00' OR ad.expiry_date > DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 90 DAY)))\n    OR '{{ $json.filter_type }}' = 'all'\n  )\n  AND (\n    '{{ $json.categories }}' = 'all' \n    OR FIND_IN_SET('document', '{{ $json.categories }}') > 0\n  )\nGROUP BY ad.applicant_id, ad.issue_date, ad.expiry_date, ad.doc_file, d.name\n\nUNION ALL\n\nSELECT DISTINCT\n  'medical' AS category,\n  m.applicant_id,\n  'Medical Test' AS document_name,\n  m.issue_date,\n  m.expiry_date,\n  m.doc_file,\n  CONCAT('https://adamson-bucket-name.s3-us-west-2.amazonaws.com/attachments/medicals/', \n         m.applicant_id, '/', m.doc_file) AS attachment_link,\n  CASE \n    WHEN m.expiry_date = '0000-00-00' OR m.expiry_date IS NULL THEN 'no_expiry'\n    WHEN m.expiry_date < CONVERT_TZ(NOW(), '+00:00', '+08:00') THEN 'expired'\n    WHEN m.expiry_date <= DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 90 DAY) THEN 'expiring'\n    ELSE 'valid'\n  END AS expiry_status,\n  MIN(m.certificate_id) AS certificate_id,\n  m.certificate_num AS certificate_number\nFROM medical m\nWHERE m.applicant_id = {{ $json.applicant_id }}\n  AND m.archive = 0\n  AND m.doc_file IS NOT NULL\n  AND m.doc_file != ''\n  AND (\n    ('{{ $json.filter_type }}' = 'expired' AND m.expiry_date != '0000-00-00' AND m.expiry_date < CONVERT_TZ(NOW(), '+00:00', '+08:00'))\n    OR ('{{ $json.filter_type }}' = 'expiring' AND m.expiry_date != '0000-00-00' AND m.expiry_date >= CONVERT_TZ(NOW(), '+00:00', '+08:00') AND m.expiry_date <= DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 90 DAY))\n    OR ('{{ $json.filter_type }}' = 'valid' AND (m.expiry_date = '0000-00-00' OR m.expiry_date > DATE_ADD(CONVERT_TZ(NOW(), '+00:00', '+08:00'), INTERVAL 90 DAY)))\n    OR '{{ $json.filter_type }}' = 'all'\n  )\n  AND (\n    '{{ $json.categories }}' = 'all' \n    OR FIND_IN_SET('medical', '{{ $json.categories }}') > 0\n  )\nGROUP BY m.applicant_id, m.issue_date, m.expiry_date, m.doc_file, m.certificate_num\n\nORDER BY expiry_status DESC, expiry_date ASC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        576,
+        -112
+      ],
+      "id": "09c304cb-7dc0-49a2-8427-7ff1613c4277",
+      "name": "Query Documents with Filters",
+      "alwaysOutputData": true,
+      "credentials": {
+        "mySql": {
+          "id": "ZTkr3Q1ezOlzmAfP",
+          "name": "IRIS_Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "fc83e3a7-7a06-4477-a039-859830a8c27b",
+              "leftValue": "={{ $json.document_name !== undefined && $json.document_name !== null }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        800,
+        -112
+      ],
+      "id": "b1eefd69-039e-474f-88f8-2da61ca34ac2",
+      "name": "Check Documents Found"
+    },
+    {
+      "parameters": {
+        "jsCode": "const applicantName = $('Extract & Validate Parameters').item.json.applicant_name;\nconst applicantId = $('Extract & Validate Parameters').item.json.applicant_id;\nconst recipientEmail = $('Extract & Validate Parameters').item.json.recipient_email;\nconst filterType = $('Extract & Validate Parameters').item.json.filter_type;\nconst categories = $('Extract & Validate Parameters').item.json.categories;\n\n// Helper function to get current Philippine time\nfunction getPhilippineTime() {\n  return new Date().toLocaleString('en-PH', {\n    year: 'numeric', \n    month: 'long', \n    day: 'numeric', \n    hour: '2-digit', \n    minute: '2-digit',\n    second: '2-digit',\n    timeZone: 'Asia/Manila',\n    hour12: true\n  });\n}\n\n// Build simple HTML for no documents case\nconst html = `\n<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body {font-family: Arial, sans-serif; padding: 20px; color: #333;}\n    .info-box {background: #f0f0f0; padding: 20px; border-radius: 8px; border-left: 4px solid #3498db;}\n    h1 {color: #2c3e50;}\n    .timezone-note {\n      background-color: #fff3cd;\n      border-left: 4px solid #ffc107;\n      padding: 10px 15px;\n      margin-top: 20px;\n      border-radius: 4px;\n      font-size: 13px;\n    }\n  </style>\n</head>\n<body>\n  <h1>📄 Crew Member Documents</h1>\n  <div class=\"info-box\">\n    <p><strong>Crew Member:</strong> ${applicantName}</p>\n    <p><strong>Applicant ID:</strong> ${applicantId}</p>\n    <p><strong>Filter Applied:</strong> ${filterType}</p>\n    <p><strong>Categories:</strong> ${categories}</p>\n    <p><strong>Result:</strong> ⚠️ No documents found matching the specified criteria.</p>\n    <p><strong>Date Generated:</strong> ${getPhilippineTime()}</p>\n  </div>\n  <div class=\"timezone-note\">\n    🕐 <strong>Note:</strong> All dates and times are in Philippine Time (PHT, UTC+8)\n  </div>\n  <p style=\"margin-top: 20px; color: #7f8c8d; font-size: 12px;\">\n    This email was generated by the IRIS Assistant System on ${getPhilippineTime()} (Philippine Time).\n  </p>\n</body>\n</html>\n`;\n\nreturn {\n  json: {\n    recipient_email: recipientEmail,\n    subject: `No Documents Found - ${applicantName}`,\n    html_body: html,\n    total_documents: 0,\n    applicant_name: applicantName,\n    applicant_id: applicantId\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        -16
+      ],
+      "id": "30b76503-f629-44c5-aec8-8a7d9e64e533",
+      "name": "Handle No Documents"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get parameters from earlier nodes\nconst applicantName = $('Extract & Validate Parameters').item.json.applicant_name;\nconst applicantId = $('Extract & Validate Parameters').item.json.applicant_id;\nconst recipientEmail = $('Extract & Validate Parameters').item.json.recipient_email;\nconst filterType = $('Extract & Validate Parameters').item.json.filter_type;\nconst categories = $('Extract & Validate Parameters').item.json.categories;\n\n// Get all document items from MySQL query\nconst documentItems = $('Query Documents with Filters').all();\n\n// Organize documents by category\nconst docsByCategory = {\n  training: [],\n  medical: [],\n  license: [],\n  document: []\n};\n\ndocumentItems.forEach(item => {\n  const doc = item.json;\n  docsByCategory[doc.category].push({\n    name: doc.document_name,\n    issue_date: doc.issue_date || 'N/A',\n    expiry_date: doc.expiry_date === '0000-00-00' ? 'No expiry' : doc.expiry_date,\n    url: doc.attachment_link,\n    status: doc.expiry_status\n  });\n});\n\n// Helper function to format date in Philippine time\nfunction formatDate(dateStr) {\n  if (!dateStr || dateStr === '0000-00-00' || dateStr === 'N/A' || dateStr === 'No expiry') {\n    return dateStr;\n  }\n  try {\n    const date = new Date(dateStr);\n    return date.toLocaleDateString('en-PH', { \n      year: 'numeric', \n      month: 'short', \n      day: 'numeric',\n      timeZone: 'Asia/Manila'\n    });\n  } catch (e) {\n    return dateStr;\n  }\n}\n\n// Helper function to get current Philippine time\nfunction getPhilippineTime() {\n  return new Date().toLocaleString('en-PH', {\n    year: 'numeric', \n    month: 'long', \n    day: 'numeric', \n    hour: '2-digit', \n    minute: '2-digit',\n    second: '2-digit',\n    timeZone: 'Asia/Manila',\n    hour12: true\n  });\n}\n\n// Start building HTML\nlet html = `\n<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <style>\n    body {\n      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;\n      line-height: 1.6;\n      color: #333;\n      max-width: 900px;\n      margin: 0 auto;\n      padding: 20px;\n      background-color: #f5f5f5;\n    }\n    .email-container {\n      background-color: white;\n      border-radius: 8px;\n      box-shadow: 0 2px 8px rgba(0,0,0,0.1);\n      padding: 30px;\n    }\n    h1 {\n      color: #2c3e50;\n      border-bottom: 3px solid #3498db;\n      padding-bottom: 15px;\n      margin-bottom: 25px;\n    }\n    h2 {\n      color: #34495e;\n      margin-top: 30px;\n      margin-bottom: 15px;\n      padding-bottom: 8px;\n      border-bottom: 2px solid #ecf0f1;\n    }\n    .info-box {\n      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\n      color: white;\n      padding: 20px;\n      border-radius: 8px;\n      margin-bottom: 30px;\n    }\n    .info-box strong {\n      display: inline-block;\n      min-width: 140px;\n    }\n    .info-box p {\n      margin: 8px 0;\n    }\n    table {\n      width: 100%;\n      border-collapse: collapse;\n      margin-bottom: 30px;\n      background: white;\n    }\n    th {\n      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\n      color: white;\n      padding: 14px 12px;\n      text-align: left;\n      font-weight: 600;\n      font-size: 14px;\n    }\n    td {\n      padding: 12px;\n      border-bottom: 1px solid #ecf0f1;\n      font-size: 14px;\n    }\n    tr:hover {\n      background-color: #f8f9fa;\n    }\n    tr:last-child td {\n      border-bottom: none;\n    }\n    .status-expired {\n      color: #e74c3c;\n      font-weight: bold;\n    }\n    .status-expiring {\n      color: #f39c12;\n      font-weight: bold;\n    }\n    .status-valid {\n      color: #27ae60;\n      font-weight: 600;\n    }\n    .status-no-expiry {\n      color: #95a5a6;\n    }\n    .download-btn {\n      display: inline-block;\n      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\n      color: white !important;\n      padding: 8px 16px;\n      border-radius: 6px;\n      text-decoration: none;\n      font-weight: 600;\n      font-size: 13px;\n      transition: transform 0.2s;\n    }\n    .download-btn:hover {\n      transform: translateY(-2px);\n      box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);\n    }\n    .footer {\n      margin-top: 40px;\n      padding-top: 25px;\n      border-top: 2px solid #ecf0f1;\n      font-size: 13px;\n      color: #7f8c8d;\n      text-align: center;\n    }\n    .summary {\n      background-color: #f8f9fa;\n      padding: 15px;\n      border-radius: 6px;\n      margin-bottom: 20px;\n      font-weight: 600;\n    }\n    .category-icon {\n      font-size: 1.3em;\n      margin-right: 8px;\n    }\n    .timezone-note {\n      background-color: #fff3cd;\n      border-left: 4px solid #ffc107;\n      padding: 10px 15px;\n      margin-bottom: 20px;\n      border-radius: 4px;\n      font-size: 13px;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"email-container\">\n    <h1>📄 Crew Member Documents</h1>\n\n    <div class=\"info-box\">\n      <p><strong>Crew Member:</strong> ${applicantName}</p>\n      <p><strong>Applicant ID:</strong> ${applicantId}</p>\n      <p><strong>Filter Applied:</strong> ${filterType.charAt(0).toUpperCase() + filterType.slice(1)}</p>\n      <p><strong>Categories:</strong> ${categories === 'all' ? 'All Categories' : categories.split(',').map(c => c.charAt(0).toUpperCase() + c.slice(1)).join(', ')}</p>\n      <p><strong>Date Generated:</strong> ${getPhilippineTime()}</p>\n    </div>\n\n    <div class=\"timezone-note\">\n      🕐 <strong>Note:</strong> All dates and times are in Philippine Time (PHT, UTC+8)\n    </div>\n`;\n\nlet totalDocuments = 0;\n\n// Category configuration\nconst categoryConfig = {\n  license: { icon: '📜', name: 'License Documents', priority: 1 },\n  medical: { icon: '⚕️', name: 'Medical Documents', priority: 2 },\n  training: { icon: '🎓', name: 'Training Documents', priority: 3 },\n  document: { icon: '📋', name: 'General Documents', priority: 4 }\n};\n\n// Process each category\nObject.keys(categoryConfig).forEach(catKey => {\n  const docs = docsByCategory[catKey];\n  if (docs.length > 0) {\n    const config = categoryConfig[catKey];\n\n    html += `\n    <h2><span class=\"category-icon\">${config.icon}</span>${config.name} <span style=\"color: #7f8c8d;\">(${docs.length})</span></h2>\n    <table>\n      <thead>\n        <tr>\n          <th style=\"width: 35%;\">Document Name</th>\n          <th style=\"width: 15%;\">Issue Date</th>\n          <th style=\"width: 15%;\">Expiry Date</th>\n          <th style=\"width: 15%;\">Status</th>\n          <th style=\"width: 20%; text-align: center;\">Download</th>\n        </tr>\n      </thead>\n      <tbody>\n    `;\n\n    docs.forEach(doc => {\n      const statusClass = 'status-' + doc.status.replace('_', '-');\n      let statusText = doc.status === 'no_expiry' ? 'No Expiry' : \n                       doc.status.charAt(0).toUpperCase() + doc.status.slice(1);\n      const statusIcon = doc.status === 'expired' ? ' ⚠️' : \n                        doc.status === 'expiring' ? ' ⏰' : \n                        doc.status === 'valid' ? ' ✓' : '';\n\n      html += `\n        <tr>\n          <td><strong>${doc.name}</strong></td>\n          <td>${formatDate(doc.issue_date)}</td>\n          <td class=\"${statusClass}\">${formatDate(doc.expiry_date)}</td>\n          <td class=\"${statusClass}\">${statusText}${statusIcon}</td>\n          <td style=\"text-align: center;\">\n            <a href=\"${doc.url}\" class=\"download-btn\" target=\"_blank\">📥 View</a>\n          </td>\n        </tr>\n      `;\n      totalDocuments++;\n    });\n\n    html += `\n      </tbody>\n    </table>\n    `;\n  }\n});\n\n// Add summary\nhtml += `\n    <div class=\"summary\">\n      📊 <strong>Total Documents:</strong> ${totalDocuments} document${totalDocuments !== 1 ? 's' : ''} found\n    </div>\n\n    <div class=\"footer\">\n      <p><strong>IRIS Assistant System</strong></p>\n      <p>This email was automatically generated by the IRIS Assistant.</p>\n      <p>For questions or support, please contact your administrator.</p>\n      <p style=\"margin-top: 15px;\"><em>Generated on ${getPhilippineTime()} (Philippine Time)</em></p>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\n// Return data for email node\nreturn {\n  json: {\n    recipient_email: recipientEmail,\n    subject: `Documents for ${applicantName} - ${filterType.charAt(0).toUpperCase() + filterType.slice(1)}`,\n    html_body: html,\n    total_documents: totalDocuments,\n    applicant_name: applicantName,\n    applicant_id: applicantId,\n    filter_applied: filterType\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        -208
+      ],
+      "id": "01ba02eb-ef8e-49d1-b8ee-1b4efff9bc28",
+      "name": "Build HTML Email"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1248,
+        -112
+      ],
+      "id": "27f9b0d3-36e5-4822-919b-52e9aa3db3c9",
+      "name": "Merge Email Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const emailData = $input.item.json;\n\nreturn $input.all();\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1696,
+        -112
+      ],
+      "id": "0df7f652-2d7a-400b-89a8-ecbb25aa2a38",
+      "name": "Return Success Response"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Send an email": {
+      "main": [
+        [
+          {
+            "node": "Return Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Extract & Validate Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract & Validate Parameters": {
+      "main": [
+        [
+          {
+            "node": "Query Documents with Filters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Documents with Filters": {
+      "main": [
+        [
+          {
+            "node": "Check Documents Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Documents Found": {
+      "main": [
+        [
+          {
+            "node": "Build HTML Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle No Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build HTML Email": {
+      "main": [
+        [
+          {
+            "node": "Merge Email Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle No Documents": {
+      "main": [
+        [
+          {
+            "node": "Merge Email Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Email Data": {
+      "main": [
+        [
+          {
+            "node": "Send an email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "5e23c28d-e7b3-4e05-a0d0-a2a62d47495b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "833ff8930db72d7a0f274bb3f9fe76a232d6d1601cfd2eda8ac6fefd1c585259"
+  },
+  "id": "pXAOUQS7ItMrFyQr",
+  "tags": []
+}

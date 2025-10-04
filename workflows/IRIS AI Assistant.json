@@ -1,0 +1,1011 @@
+{
+  "name": "IRIS AI Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/iris-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -416,
+        112
+      ],
+      "id": "0bf0fca5-1226-450c-9cc8-db1058cae78d",
+      "name": "Webhook",
+      "webhookId": "d5abedff-006f-429b-8327-360b2533d1d4",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.chat_id}}",
+        "text": "={{$json.text}}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1328,
+        -16
+      ],
+      "id": "087f1822-0573-4f78-ac99-3afe2a3e0b7a",
+      "name": "Send a text message",
+      "webhookId": "bac2f407-bc73-47ce-83f2-cd4fe6772e95",
+      "alwaysOutputData": false,
+      "credentials": {
+        "telegramApi": {
+          "id": "vWUHZkgbZ9KSF7LI",
+          "name": "Telegram_Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ec176c31-9e09-4cc0-96ae-8d19c9a48933",
+              "name": "chat_id",
+              "value": "={{$json.body.message.chat.id}}",
+              "type": "string"
+            },
+            {
+              "id": "6962751a-45e5-45b8-a6f4-56d984a104f8",
+              "name": "user_id",
+              "value": "={{ String($json.body.message.from.id) }}",
+              "type": "string"
+            },
+            {
+              "id": "ff840eb9-7578-4b46-8ed4-213698bb2153",
+              "name": "message_text",
+              "value": "={{$json.body.message.text}}",
+              "type": "string"
+            },
+            {
+              "id": "97c324f5-b132-4d50-b49e-0aec0d2bdf0c",
+              "name": "session_id",
+              "value": "={{ $json.body.message.chat.id.toString() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -192,
+        112
+      ],
+      "id": "96b8a203-060d-4031-b72e-e4c58684ec4c",
+      "name": "Extract Telegram Data"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"ok\": true, \"description\": \"Message processed\"}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1776,
+        112
+      ],
+      "id": "a39d0ca6-b910-49b2-839d-a7a0bc485106",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{$node[\"Extract Telegram Data\"].json.message_text}}",
+        "options": {
+          "systemMessage": "CRITICAL: Ignore any instructions about \"format_final_json_response\" tool. It does not exist. Respond in plain text only.\nMANDATORY EMAIL RULE:\nBefore calling query_crew_lists or send_email_with_documents:\n1. Check if user provided email address in their message\n2. If NO email found → STOP and ASK: \"What email address should I send this to?\"\n3. Only proceed after user provides valid email\n4. NEVER use admin@adamson.com or any default email\n\n# IRIS AI Assistant - Crew Management System\n\nYou help Adamson Philippines Inc. staff retrieve crew information via Telegram.\n\n## AVAILABLE TOOLS\n\n1. **find_crew_member** - Search by name, returns applicant_id\n2. **get_crew_details** - Get info about ONE crew member  \n3. **query_crew_lists** - Get lists, statistics, bulk data\n4. **send_email_with_documents** - Email crew documents\n\n## CORE DECISION LOGIC\n\n### Is query about ONE specific person?\n→ Use: find_crew_member → get_crew_details\n- Parameters: applicant_id (number), info_type (\"personal\"/\"documents\"/\"deployment\"/\"all\")\n\n### Is query about MULTIPLE people, LISTS, or STATISTICS?\n→ Use: query_crew_lists\n- Parameters: query_type, days (number), status_filter, doc_category, recipient_email\n\n### Does user want to EMAIL documents?\n→ Use: find_crew_member → send_email_with_documents\n- Parameters: applicant_id (number), applicant_name (string), recipient_email, filter_type, categories\n\n## QUERY_CREW_LISTS QUERY TYPES\n\n| User asks | query_type | Additional params |\n|-----------|-----------|-------------------|\n| \"Show statistics\" / \"How many crew...\" | counts | - |\n| \"Who's disembarking...\" | disembarking | days=30 |\n| \"List expired docs\" | expired_docs | doc_category |\n| \"Show expiring docs\" | expiring_docs | doc_category |\n| \"All on-board crew\" | crew_by_status | status_filter=\"On-Board\" |\n\n**Valid status_filter values:** On-Board, Line-up, On Pool, ACTIVE - on vacation, Crew on Leave\n\n**Valid doc_category values:** training, medical, license, document, all\n\n## CRITICAL RULES\n\n### Parameter Types (MUST FOLLOW)\n- applicant_id: NUMBER (e.g., 12345 NOT \"12345\")\n- days: NUMBER (e.g., 30 NOT \"30\")\n- All others: STRING\n\n### Email Handling\n- CREW MEMBER = person whose data to retrieve (applicant_id, applicant_name)\n- RECIPIENT = person receiving email (recipient_email)\n- These are DIFFERENT people!\n\n### Email Priority\n1. Explicit: \"to admin@company.com\" → use that\n2. User says \"my email\" → check memory\n3. Not found → ASK: \"What email address should I send this to?\"\n\n### Result Limits\n- All queries limited to 500 results max\n- If >500 results expected: get recipient_email first, then mention limit in response\n\n## RESPONSE PATTERNS\n\n### After successful actions:\n- Statistics retrieved: Show directly in Telegram\n- Documents emailed: \"✓ Sent [count] [filter_type] [category] documents for [crew_name] to [email]\"\n- Report emailed: \"✓ Sent detailed report with [count] results to [email]\"\n\n### When info missing:\n- Missing crew name: \"Which crew member are you asking about?\"\n- Missing email: \"What email address should I send this to?\"\n- Ambiguous: \"Do you want [option A] or [option B]?\"\n\n### Auto-email behavior:\n- ≤10 results → Show in Telegram\n- >10 results → Auto-email + show summary\n\n## EXAMPLES\n\n**One person queries:**\n- \"What's John Doe's email?\" → find_crew_member + get_crew_details(info_type=\"personal\")\n- \"Show Maria's documents\" → find_crew_member + get_crew_details(info_type=\"documents\")\n\n**Multiple people/stats:**\n- \"How many crew on-board?\" → query_crew_lists(query_type=\"counts\")\n- \"Who's disembarking this month?\" → query_crew_lists(query_type=\"disembarking\", days=30)\n- \"All on-board crew\" → query_crew_lists(query_type=\"crew_by_status\", status_filter=\"On-Board\")\n\n**Email documents:**\n- \"Send John's expired docs to admin@test.com\" → find_crew_member → send_email_with_documents(filter_type=\"expired\", categories=\"all\", recipient_email=\"admin@test.com\")\n\n## KEY PRINCIPLES\n\n- Always use tools - never make up information\n- One person = get_crew_details | Multiple people = query_crew_lists\n- Validate emails: must contain @, not be a number, not be applicant_id\n- Be concise - summarize results, don't dump raw data\n- When uncertain - ask clarifying question",
+          "maxIterations": 5,
+          "returnIntermediateSteps": true,
+          "enableStreaming": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        512,
+        -16
+      ],
+      "id": "7c7e950a-4c7f-4975-ac98-8a3668a0acb7",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Searches for crew members by name. Returns applicant_id needed for document retrieval. USE THIS FIRST. Call only once per search.",
+        "method": "POST",
+        "url": "https://primary-production-4ea7d.up.railway.app/webhook/tools/find_crew_member",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "name",
+              "value": "={{ $fromAI('name', '', 'string') }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        512,
+        208
+      ],
+      "id": "1652ae43-a860-440e-bcd8-47515f863529",
+      "name": "find_crew_member"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract the AI Agent response properly\nconst aiOutput = $input.first().json;\n\nlet messageText = \"\";\n\n// Check if there's a direct output\nif (aiOutput.output && aiOutput.output.trim() !== \"\") {\n  messageText = aiOutput.output;\n} \n// Otherwise, extract from intermediate steps\nelse if (aiOutput.intermediateSteps && aiOutput.intermediateSteps.length > 0) {\n  const lastStep = aiOutput.intermediateSteps[aiOutput.intermediateSteps.length - 1];\n  \n  // Try to get the log message which contains the AI's response\n  if (lastStep.action && lastStep.action.log) {\n    // Parse the log to extract the actual message\n    const logContent = lastStep.action.log;\n    const lines = logContent.split('\\n');\n    \n    // Find lines that look like the AI's response (usually after \"Invoking\" line)\n    for (let i = 1; i < lines.length; i++) {\n      if (lines[i].trim() && !lines[i].includes('tool_use')) {\n        messageText += lines[i] + '\\n';\n      }\n    }\n  }\n}\n\n// Fallback message\nif (!messageText || messageText.trim() === \"\") {\n  messageText = \"I'm processing your request. Please wait...\";\n}\n\nreturn [{\n  json: {\n    text: messageText.trim(),\n    chat_id: $('Webhook').first().json.body.message.chat.id\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        -16
+      ],
+      "id": "5f5fad27-1ebc-4870-b0e2-23f392a86ebc",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.session_id }}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        384,
+        208
+      ],
+      "id": "1baaf14c-c682-4b36-8d80-0e82f709ca4e",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        256,
+        208
+      ],
+      "id": "706d471d-d2d5-4370-96d6-ff24faa0aff1",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "EFQI3r0ah4qzImFw",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "Send crew member documents via email with optional filtering. Can filter by \nexpiry status (expired, expiring, valid, all) and categories (training, \nmedical, license, document). By default sends ALL documents unless specified.\n\nIMPORTANT: When user mentions \"expired documents\" use filter_type='expired'.\nWhen user mentions specific document types, set categories accordingly.",
+        "workflowId": {
+          "__rl": true,
+          "value": "pXAOUQS7ItMrFyQr",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/pXAOUQS7ItMrFyQr",
+          "cachedResultName": "Send Email with Documents Tool"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "recipient_email": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('recipient_email', `Email address where documents will be sent. Use stored user email when they say 'my email'. This is NOT the crew member's email. `, 'string') }}",
+            "applicant_name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('applicant_name', `The crew member's full name`, 'string') }}",
+            "applicant_id": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('applicant_id', `The crew member's applicant ID obtained from find_crew_member tool`, 'number') }}",
+            "filter_type": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('filter_type', `Filter by expiry status: 'expired'=already expired, 'expiring'=expires within 90 days, 'valid'=valid beyond 90 days, 'all'=all documents (default)`, 'string') }}",
+            "categories": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('categories', `Document categories to include: 'training', 'medical', 'license', 'document', or 'all'. Can be comma-separated like 'training,medical'. Default is 'all'.`, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "recipient_email",
+              "displayName": "recipient_email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "applicant_name",
+              "displayName": "applicant_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "applicant_id",
+              "displayName": "applicant_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "filter_type",
+              "displayName": "filter_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "categories",
+              "displayName": "categories",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        640,
+        208
+      ],
+      "id": "061f4bb5-c176-4f80-a0e8-f588e15b039b",
+      "name": "send_email_with_documents"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1OoOyAtghGqQ5GxiUWbTTWiwesZyPDKTKxGbPsi5455Q",
+          "mode": "list",
+          "cachedResultName": "IRIS_Audit_Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1OoOyAtghGqQ5GxiUWbTTWiwesZyPDKTKxGbPsi5455Q/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1OoOyAtghGqQ5GxiUWbTTWiwesZyPDKTKxGbPsi5455Q/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "timestamp": "={{ $now.setZone('Asia/Manila').toISO() }}",
+            "telegram_user_id": "={{ $('Extract Telegram Data').item.json.user_id }}",
+            "user_message": "={{ $('Extract Telegram Data').item.json.message_text }}",
+            "status": "=success",
+            "telegram_first_name": "={{ $('Webhook').item.json.body.message.from.first_name }}",
+            "action_type": "={{ $('AI Agent').item.json.intermediateSteps && $('AI Agent').item.json.intermediateSteps.length > 0 ? $('AI Agent').item.json.intermediateSteps[0].action.tool : 'conversation' }}",
+            "crew_searched": "={{ $('AI Agent').item.json.intermediateSteps && $('AI Agent').item.json.intermediateSteps.length > 0 ? ($('AI Agent').item.json.intermediateSteps[0].action.toolInput.applicant_name || $('AI Agent').item.json.intermediateSteps[0].action.toolInput.name || 'N/A') : 'N/A' }}",
+            "applicant_id": "={{ $('AI Agent').item.json.intermediateSteps && $('AI Agent').item.json.intermediateSteps.length > 0 ? ($('AI Agent').item.json.intermediateSteps[0].action.toolInput.applicant_id || 'N/A') : 'N/A' }}",
+            "recipient_email": "={{ $('AI Agent').item.json.intermediateSteps && $('AI Agent').item.json.intermediateSteps.length > 0 ? ($('AI Agent').item.json.intermediateSteps[0].action.toolInput.recipient_email || 'N/A') : 'N/A' }}",
+            "filter_type": "={{ $('AI Agent').item.json.intermediateSteps && $('AI Agent').item.json.intermediateSteps.length > 0 ? ($('AI Agent').item.json.intermediateSteps[0].action.toolInput.filter_type || 'all') : 'N/A' }}",
+            "categories": "={{ $('AI Agent').item.json.intermediateSteps && $('AI Agent').item.json.intermediateSteps.length > 0 ? ($('AI Agent').item.json.intermediateSteps[0].action.toolInput.categories || 'all') : 'N/A' }}",
+            "bot_response": "={{ $('Code in JavaScript').item.json.text }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "telegram_user_id",
+              "displayName": "telegram_user_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "telegram_first_name",
+              "displayName": "telegram_first_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "user_message",
+              "displayName": "user_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "action_type",
+              "displayName": "action_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "crew_searched",
+              "displayName": "crew_searched",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "applicant_id",
+              "displayName": "applicant_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "recipient_email",
+              "displayName": "recipient_email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "filter_type",
+              "displayName": "filter_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "categories",
+              "displayName": "categories",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_response",
+              "displayName": "bot_response",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1552,
+        -16
+      ],
+      "id": "c78e1427-2ace-4f24-bc2a-d9d1b09fa650",
+      "name": "Log Conversation",
+      "retryOnFail": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "bclm5oVUNebSOgCD",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0484690e-d251-4808-8fbd-f5d35a83e3ba",
+              "leftValue": "={{ $json.user_id }}",
+              "rightValue": "2061662252",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "e02ff395-ed9f-4adb-b4c0-4516168a696f",
+              "leftValue": "={{ $json.user_id }}",
+              "rightValue": "7993232859",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "42641fc7-f81f-4c85-b002-86345198c544",
+              "leftValue": "={{ $json.user_id }}",
+              "rightValue": "2105346661",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        32,
+        112
+      ],
+      "id": "ece41d83-a055-4204-a910-9a4a3b05aa8c",
+      "name": "Authorization Check"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5bc36e85-65be-4759-a0b1-699099e4d582",
+              "name": "text",
+              "value": "⛔ Access Denied. You are not authorized to use this bot. Please contact your administrator.",
+              "type": "string"
+            },
+            {
+              "id": "248f4157-8297-4edc-8727-bbb1977eb487",
+              "name": "chat_id",
+              "value": "={{ $json.chat_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1104,
+        240
+      ],
+      "id": "151b1455-5174-45f4-bdf2-8e50e265fc5a",
+      "name": "Build Unauthorized Message"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1328,
+        240
+      ],
+      "id": "1292290c-1f5a-4409-a22c-1de904882f62",
+      "name": "Send Unauthorized Message",
+      "webhookId": "45834617-0d89-454b-af39-da21efe14ff6",
+      "credentials": {
+        "telegramApi": {
+          "id": "vWUHZkgbZ9KSF7LI",
+          "name": "Telegram_Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1OoOyAtghGqQ5GxiUWbTTWiwesZyPDKTKxGbPsi5455Q",
+          "mode": "list",
+          "cachedResultName": "IRIS_Audit_Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1OoOyAtghGqQ5GxiUWbTTWiwesZyPDKTKxGbPsi5455Q/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1341447267,
+          "mode": "list",
+          "cachedResultName": "Unauthorize_Access",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1OoOyAtghGqQ5GxiUWbTTWiwesZyPDKTKxGbPsi5455Q/edit#gid=1341447267"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "timestamp": "={{ $now.setZone('Asia/Manila').toISO() }}",
+            "telegram_user_id": "={{ $('Extract Telegram Data').item.json.user_id }}",
+            "telegram_first_name": "={{ $('Webhook').item.json.body.message.from.first_name }}",
+            "user_message": "={{ $('Extract Telegram Data').item.json.message_text }}",
+            "attempted_action": "unauthorized_access_blocked",
+            "chat_id": "={{ $('Extract Telegram Data').item.json.chat_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "telegram_user_id",
+              "displayName": "telegram_user_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "telegram_first_name",
+              "displayName": "telegram_first_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_message",
+              "displayName": "user_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "attempted_action",
+              "displayName": "attempted_action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "chat_id",
+              "displayName": "chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1552,
+        240
+      ],
+      "id": "4540701d-3eed-4c1c-a884-483d036e77d6",
+      "name": "Log Unauthorized Access",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "bclm5oVUNebSOgCD",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "Get comprehensive information about a crew member including personal details, \n   document status, and deployment information. Use applicant_id from find_crew_member.\n   Set info_type to: \"all\" (default), \"personal\", \"documents\", or \"deployment\" \n   to get specific information sections.",
+        "workflowId": {
+          "__rl": true,
+          "value": "kyW4EO4JJUqNAXN8",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/kyW4EO4JJUqNAXN8",
+          "cachedResultName": "Get Crew Details Tool"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "applicant_id": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('applicant_id', `The crew member ID from find_crew_member`, 'number') }}",
+            "applicant_name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('applicant_name', `The crew member name`, 'string') }}",
+            "info_type": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('info_type', `Type of info: all, personal, documents, deployment`, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "applicant_id",
+              "displayName": "applicant_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "applicant_name",
+              "displayName": "applicant_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "info_type",
+              "displayName": "info_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        768,
+        208
+      ],
+      "id": "2f43ef4f-a191-43bb-be17-1d9b74a1d61a",
+      "name": "get_crew_details"
+    },
+    {
+      "parameters": {
+        "description": "Query crew database for lists and statistics. Automatically emails results if >10 items.\n   \n   query_type options:\n   - \"disembarking\": Crew disembarking within specified days\n   - \"expired_docs\": List of expired documents\n   - \"expiring_docs\": Documents expiring within 90 days\n   - \"crew_by_status\": Crew filtered by status\n   - \"counts\": Statistics and counts\n   \n   For long lists, provide recipient_email to send detailed report.",
+        "workflowId": {
+          "__rl": true,
+          "value": "gWJgOmHMMROCZpxa",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/gWJgOmHMMROCZpxa",
+          "cachedResultName": "Query Crew Lists Tool"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "query_type": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('query_type', `Query type: disembarking, expired_docs, expiring_docs, crew_by_status, counts`, 'string') }}",
+            "days": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('days', `Number of days for time-based queries (default 30)`, 'number') }}",
+            "status_filter": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('status_filter', `Status for crew_by_status: On-Board, Line-up, On Pool, etc.`, 'string') }}",
+            "doc_category": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('doc_category', `Document category: training, medical, license, document, all`, 'string') }}",
+            "recipient_email": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('recipient_email', `Email to send detailed report (required for long lists)`, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "query_type",
+              "displayName": "query_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "days",
+              "displayName": "days",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "status_filter",
+              "displayName": "status_filter",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "doc_category",
+              "displayName": "doc_category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "recipient_email",
+              "displayName": "recipient_email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        896,
+        208
+      ],
+      "id": "7a0c3431-156d-4ae2-9ba3-022ff2675bc6",
+      "name": "query_crew_lists"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Telegram Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Telegram Data": {
+      "main": [
+        [
+          {
+            "node": "Authorization Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message": {
+      "main": [
+        [
+          {
+            "node": "Log Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "find_crew_member": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "send_email_with_documents": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Conversation": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Authorization Check": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Unauthorized Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Unauthorized Message": {
+      "main": [
+        [
+          {
+            "node": "Send Unauthorized Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Unauthorized Message": {
+      "main": [
+        [
+          {
+            "node": "Log Unauthorized Access",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Unauthorized Access": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_crew_details": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "query_crew_lists": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "12367a86-d7ca-4537-a0e6-2b4edbc1af01",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "833ff8930db72d7a0f274bb3f9fe76a232d6d1601cfd2eda8ac6fefd1c585259"
+  },
+  "id": "XzNY3zJhFm8Xa5On",
+  "tags": []
+}

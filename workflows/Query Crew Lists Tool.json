@@ -1,0 +1,670 @@
+{
+  "name": "Query Crew Lists Tool",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "query_type"
+            },
+            {
+              "name": "days",
+              "type": "number"
+            },
+            {
+              "name": "status_filter"
+            },
+            {
+              "name": "doc_category"
+            },
+            {
+              "name": "recipient_email"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        144
+      ],
+      "id": "c1bd3836-228f-4362-ad7a-ab00a4c3e368",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.query_type }}",
+                    "rightValue": "disembarking",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "6ab975b2-2137-4a14-a7a4-91f7e2faf142"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "1861bd8b-bc06-4ea5-931b-f8386303c5e5",
+                    "leftValue": "={{ $json.query_type }}",
+                    "rightValue": "expired_docs",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "b01291c8-f0ac-4709-9062-05a7a12261f2",
+                    "leftValue": "={{ $json.query_type }}",
+                    "rightValue": "expiring_docs",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "bfed0381-2d43-47c7-affe-f2741ae41bee",
+                    "leftValue": "={{ $json.query_type }}",
+                    "rightValue": "crew_by_status",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "d9f764bc-d08f-4aa2-ae14-dc1465c62237",
+                    "leftValue": "={{ $json.query_type }}",
+                    "rightValue": "counts",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        448,
+        96
+      ],
+      "id": "18b20c72-1e91-49b9-a82a-aa5958de6d19",
+      "name": "Route Query Type"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  p.applicant_id,\n  CONCAT(\n    COALESCE(p.fname, ''), ' ',\n    COALESCE(p.mname, ''), ' ',\n    COALESCE(p.lname, ''), ' ',\n    COALESCE(p.suffix, '')\n  ) AS full_name,\n  p.status,\n  p.email,\n  pr.vessel_id,\n  v.name AS vessel_name,\n  prin.name AS principal_name,\n  pos.name AS position,\n  pr.disembarkation,\n  DATEDIFF(pr.disembarkation, CURDATE()) AS days_until_disembark\nFROM personal p\nJOIN process pr ON p.applicant_id = pr.applicant_id\nLEFT JOIN vessels v ON pr.vessel_id = v.vessel_id\nLEFT JOIN principals prin ON pr.principal_id = prin.principal_id\nLEFT JOIN positions pos ON pr.position_id = pos.position_id\nWHERE pr.disembarkation BETWEEN CURDATE() \n  AND DATE_ADD(CURDATE(), INTERVAL {{ $json.days || 30 }} DAY)\nORDER BY pr.disembarkation ASC\nLIMIT 500",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        672,
+        -240
+      ],
+      "id": "684a27c1-45f0-4e5e-968a-45d79c363029",
+      "name": "Query Disembarking Crew",
+      "credentials": {
+        "mySql": {
+          "id": "ZTkr3Q1ezOlzmAfP",
+          "name": "IRIS_Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  p.applicant_id,\n  CONCAT(\n    COALESCE(p.fname, ''), ' ',\n    COALESCE(p.mname, ''), ' ',\n    COALESCE(p.lname, ''), ' ',\n    COALESCE(p.suffix, '')\n  ) AS full_name,\n  p.status,\n  p.email,\n  al.license_id AS doc_id,\n  al.expiry_date,\n  'License' AS doc_type,\n  l.name AS document_name\nFROM personal p\nJOIN applicant_licenses al ON p.applicant_id = al.applicant_id\nLEFT JOIN licenses l ON al.license_id = l.id\nWHERE p.currentstate NOT IN ('I', 'RT')\n  AND al.expiry_date != '0000-00-00'\n  AND al.expiry_date < CURDATE()\n  AND al.archive = 0\n  AND p.status IN ('On-Board', 'Line-up', 'ACTIVE - on vacation')\n  AND ('{{ $json.doc_category }}' = '' OR '{{ $json.doc_category }}' = 'all' OR '{{ $json.doc_category }}' = 'license')\n\nUNION ALL\n\nSELECT \n  p.applicant_id,\n  CONCAT(\n    COALESCE(p.fname, ''), ' ',\n    COALESCE(p.mname, ''), ' ',\n    COALESCE(p.lname, ''), ' ',\n    COALESCE(p.suffix, '')\n  ) AS full_name,\n  p.status,\n  p.email,\n  t.training_course_id AS doc_id,\n  t.expiry_date,\n  'Training' AS doc_type,\n  t.traindesc AS document_name\nFROM personal p\nJOIN training t ON p.applicant_id = t.applicant_id\nWHERE p.currentstate NOT IN ('I', 'RT')\n  AND t.expiry_date != '0000-00-00'\n  AND t.expiry_date < CURDATE()\n  AND t.archive = 0\n  AND p.status IN ('On-Board', 'Line-up', 'ACTIVE - on vacation')\n  AND ('{{ $json.doc_category }}' = '' OR '{{ $json.doc_category }}' = 'all' OR '{{ $json.doc_category }}' = 'training')\n\nUNION ALL\n\nSELECT \n  p.applicant_id,\n  CONCAT(\n    COALESCE(p.fname, ''), ' ',\n    COALESCE(p.mname, ''), ' ',\n    COALESCE(p.lname, ''), ' ',\n    COALESCE(p.suffix, '')\n  ) AS full_name,\n  p.status,\n  p.email,\n  ad.doc_id AS doc_id,\n  ad.expiry_date,\n  'Document' AS doc_type,\n  d.name AS document_name\nFROM personal p\nJOIN applicant_documents ad ON p.applicant_id = ad.applicant_id\nLEFT JOIN documents d ON ad.doc_id = d.id\nWHERE p.currentstate NOT IN ('I', 'RT')\n  AND ad.expiry_date != '0000-00-00'\n  AND ad.expiry_date < CURDATE()\n  AND ad.archive = 0\n  AND p.status IN ('On-Board', 'Line-up', 'ACTIVE - on vacation')\n  AND ('{{ $json.doc_category }}' = '' OR '{{ $json.doc_category }}' = 'all' OR '{{ $json.doc_category }}' = 'document')\n\nUNION ALL\n\nSELECT \n  p.applicant_id,\n  CONCAT(\n    COALESCE(p.fname, ''), ' ',\n    COALESCE(p.mname, ''), ' ',\n    COALESCE(p.lname, ''), ' ',\n    COALESCE(p.suffix, '')\n  ) AS full_name,\n  p.status,\n  p.email,\n  m.certificate_id AS doc_id,\n  m.expiry_date,\n  'Medical' AS doc_type,\n  'Medical Certificate' AS document_name\nFROM personal p\nINNER JOIN medical m ON m.applicant_id = p.applicant_id\n  AND m.expiry_date = (\n    SELECT MAX(e.expiry_date)\n    FROM medical e\n    WHERE e.applicant_id = m.applicant_id\n    LIMIT 1\n  )\nWHERE p.currentstate NOT IN ('I', 'RT')\n  AND m.expiry_date != '0000-00-00'\n  AND m.expiry_date < CURDATE()\n  AND m.archive = 0\n  AND p.status IN ('On-Board', 'Line-up', 'ACTIVE - on vacation')\n  AND ('{{ $json.doc_category }}' = '' OR '{{ $json.doc_category }}' = 'all' OR '{{ $json.doc_category }}' = 'medical')\n\nORDER BY expiry_date ASC\nLIMIT 500",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        672,
+        -48
+      ],
+      "id": "bee5febd-c8f8-4b9f-90fe-6645145543ad",
+      "name": "Query Expired Documents",
+      "credentials": {
+        "mySql": {
+          "id": "ZTkr3Q1ezOlzmAfP",
+          "name": "IRIS_Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  p.applicant_id,\n  CONCAT(\n    COALESCE(p.fname, ''), ' ',\n    COALESCE(p.mname, ''), ' ',\n    COALESCE(p.lname, ''), ' ',\n    COALESCE(p.suffix, '')\n  ) AS full_name,\n  p.status,\n  p.email,\n  p.telephone1,\n  pos1.name AS primary_position,\n  CASE \n    WHEN p.currentstate = 'I' THEN 'Inactive'\n    WHEN p.currentstate = 'A' THEN 'Active'\n    WHEN p.currentstate = 'RT' THEN 'Retired'\n    WHEN p.currentstate = 'NR' THEN 'Not-for-Rehire'\n    WHEN p.currentstate = 'DC' THEN 'Deceased'\n  END AS current_state\nFROM personal p\nLEFT JOIN positions pos1 ON p.position_id1 = pos1.position_id\nWHERE p.status = '{{ $json.status_filter }}'\nORDER BY p.lname, p.fname\nLIMIT 500",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        672,
+        336
+      ],
+      "id": "6fd9bf14-ca0d-4fe7-95e0-c5793f17f46d",
+      "name": "Query Crew by Status",
+      "credentials": {
+        "mySql": {
+          "id": "ZTkr3Q1ezOlzmAfP",
+          "name": "IRIS_Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  'Total Crew' AS metric,\n  COUNT(*) AS count\nFROM personal\n\nUNION ALL\n\nSELECT \n  'On-Board' AS metric,\n  COUNT(*) AS count\nFROM personal\nWHERE status = 'On-Board'\n\nUNION ALL\n\nSELECT \n  'Line-up' AS metric,\n  COUNT(*) AS count\nFROM personal\nWHERE status = 'Line-up'\n\nUNION ALL\n\nSELECT \n  'On Pool' AS metric,\n  COUNT(*) AS count\nFROM personal\nWHERE status = 'On Pool'\n\nUNION ALL\n\nSELECT \n  'ACTIVE - on vacation' AS metric,\n  COUNT(*) AS count\nFROM personal\nWHERE status = 'ACTIVE - on vacation'\n\nUNION ALL\n\nSELECT \n  'Crew on Leave' AS metric,\n  COUNT(*) AS count\nFROM personal\nWHERE status = 'Crew on Leave'\n\nUNION ALL\n\nSELECT \n  'Expired Training' AS metric,\n  COUNT(DISTINCT p.applicant_id) AS count\nFROM personal p\nJOIN training t ON p.applicant_id = t.applicant_id\nWHERE p.currentstate NOT IN ('I', 'RT')\n  AND t.expiry_date != '0000-00-00'\n  AND t.expiry_date < CURDATE()\n  AND t.archive = 0\n  AND p.status = 'On-Board'\n\nUNION ALL\n\nSELECT \n  'Expired Licenses' AS metric,\n  COUNT(DISTINCT p.applicant_id) AS count\nFROM personal p\nJOIN applicant_licenses al ON p.applicant_id = al.applicant_id\nWHERE p.currentstate NOT IN ('I', 'RT')\n  AND al.expiry_date != '0000-00-00'\n  AND al.expiry_date < CURDATE()\n  AND al.archive = 0\n  AND p.status = 'On-Board'\n\nUNION ALL\n\nSELECT \n  'Expired Medical' AS metric,\n  COUNT(DISTINCT p.applicant_id) AS count\nFROM personal p\nINNER JOIN medical m ON m.applicant_id = p.applicant_id\n  AND m.expiry_date = (\n    SELECT MAX(e.expiry_date)\n    FROM medical e\n    WHERE e.applicant_id = m.applicant_id\n    LIMIT 1\n  )\nWHERE p.currentstate NOT IN ('I', 'RT')\n  AND m.expiry_date != '0000-00-00'\n  AND m.expiry_date < CURDATE()\n  AND m.archive = 0\n  AND p.status = 'On-Board'",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        672,
+        528
+      ],
+      "id": "4633189a-37cf-4b29-bb49-7f2570c2e0bf",
+      "name": "Query Counts",
+      "credentials": {
+        "mySql": {
+          "id": "ZTkr3Q1ezOlzmAfP",
+          "name": "IRIS_Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  p.applicant_id,\n  CONCAT(\n    COALESCE(p.fname, ''), ' ',\n    COALESCE(p.mname, ''), ' ',\n    COALESCE(p.lname, ''), ' ',\n    COALESCE(p.suffix, '')\n  ) AS full_name,\n  p.status,\n  p.email,\n  al.license_id AS doc_id,\n  al.expiry_date,\n  'License' AS doc_type,\n  l.name AS document_name,\n  DATEDIFF(al.expiry_date, CURDATE()) AS days_until_expiry\nFROM personal p\nJOIN applicant_licenses al ON p.applicant_id = al.applicant_id\nLEFT JOIN licenses l ON al.license_id = l.id\nWHERE p.currentstate NOT IN ('I', 'RT')\n  AND al.expiry_date != '0000-00-00'\n  AND al.expiry_date > CURDATE()\n  AND al.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY)\n  AND al.archive = 0\n  AND p.status IN ('On-Board', 'Line-up', 'ACTIVE - on vacation')\n  AND ('{{ $json.doc_category }}' = '' OR '{{ $json.doc_category }}' = 'all' OR '{{ $json.doc_category }}' = 'license')\n\nUNION ALL\n\nSELECT \n  p.applicant_id,\n  CONCAT(\n    COALESCE(p.fname, ''), ' ',\n    COALESCE(p.mname, ''), ' ',\n    COALESCE(p.lname, ''), ' ',\n    COALESCE(p.suffix, '')\n  ) AS full_name,\n  p.status,\n  p.email,\n  t.training_course_id AS doc_id,\n  t.expiry_date,\n  'Training' AS doc_type,\n  t.traindesc AS document_name,\n  DATEDIFF(t.expiry_date, CURDATE()) AS days_until_expiry\nFROM personal p\nJOIN training t ON p.applicant_id = t.applicant_id\nWHERE p.currentstate NOT IN ('I', 'RT')\n  AND t.expiry_date != '0000-00-00'\n  AND t.expiry_date > CURDATE()\n  AND t.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY)\n  AND t.archive = 0\n  AND p.status IN ('On-Board', 'Line-up', 'ACTIVE - on vacation')\n  AND ('{{ $json.doc_category }}' = '' OR '{{ $json.doc_category }}' = 'all' OR '{{ $json.doc_category }}' = 'training')\n\nUNION ALL\n\nSELECT \n  p.applicant_id,\n  CONCAT(\n    COALESCE(p.fname, ''), ' ',\n    COALESCE(p.mname, ''), ' ',\n    COALESCE(p.lname, ''), ' ',\n    COALESCE(p.suffix, '')\n  ) AS full_name,\n  p.status,\n  p.email,\n  ad.doc_id AS doc_id,\n  ad.expiry_date,\n  'Document' AS doc_type,\n  d.name AS document_name,\n  DATEDIFF(ad.expiry_date, CURDATE()) AS days_until_expiry\nFROM personal p\nJOIN applicant_documents ad ON p.applicant_id = ad.applicant_id\nLEFT JOIN documents d ON ad.doc_id = d.id\nWHERE p.currentstate NOT IN ('I', 'RT')\n  AND ad.expiry_date != '0000-00-00'\n  AND ad.expiry_date > CURDATE()\n  AND ad.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY)\n  AND ad.archive = 0\n  AND p.status IN ('On-Board', 'Line-up', 'ACTIVE - on vacation')\n  AND ('{{ $json.doc_category }}' = '' OR '{{ $json.doc_category }}' = 'all' OR '{{ $json.doc_category }}' = 'document')\n\nUNION ALL\n\nSELECT \n  p.applicant_id,\n  CONCAT(\n    COALESCE(p.fname, ''), ' ',\n    COALESCE(p.mname, ''), ' ',\n    COALESCE(p.lname, ''), ' ',\n    COALESCE(p.suffix, '')\n  ) AS full_name,\n  p.status,\n  p.email,\n  m.certificate_id AS doc_id,\n  m.expiry_date,\n  'Medical' AS doc_type,\n  'Medical Certificate' AS document_name,\n  DATEDIFF(m.expiry_date, CURDATE()) AS days_until_expiry\nFROM personal p\nINNER JOIN medical m ON m.applicant_id = p.applicant_id\n  AND m.expiry_date = (\n    SELECT MAX(e.expiry_date)\n    FROM medical e\n    WHERE e.applicant_id = m.applicant_id\n    LIMIT 1\n  )\nWHERE p.currentstate NOT IN ('I', 'RT')\n  AND m.expiry_date != '0000-00-00'\n  AND m.expiry_date > CURDATE()\n  AND m.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY)\n  AND m.archive = 0\n  AND p.status IN ('On-Board', 'Line-up', 'ACTIVE - on vacation')\n  AND ('{{ $json.doc_category }}' = '' OR '{{ $json.doc_category }}' = 'all' OR '{{ $json.doc_category }}' = 'medical')\n\nORDER BY expiry_date ASC\nLIMIT 500",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        672,
+        144
+      ],
+      "id": "ca14a312-fc2d-4311-adff-9fa23f44a9a9",
+      "name": "Query Expiring Documents",
+      "credentials": {
+        "mySql": {
+          "id": "ZTkr3Q1ezOlzmAfP",
+          "name": "IRIS_Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 5
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        896,
+        96
+      ],
+      "id": "0521768c-7d27-4401-b7e0-79fca1ba2c2f",
+      "name": "Merge Results"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ad47918a-bb98-43a2-af56-700af73a4ab9",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 3,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        144
+      ],
+      "id": "a639ea76-36c1-4604-9924-75760b37e5b6",
+      "name": "Check if Results Need Email"
+    },
+    {
+      "parameters": {
+        "jsCode": "const queryType = $('Execute Workflow Trigger').first().json.query_type;\nconst results = $input.all().map(item => item.json);\n\nfunction formatDate(dateStr) {\n  if (!dateStr || dateStr === '0000-00-00') return 'N/A';\n  const date = new Date(dateStr);\n  return date.toLocaleDateString('en-PH', { \n    year: 'numeric', \n    month: 'short', \n    day: 'numeric',\n    timeZone: 'Asia/Manila'\n  });\n}\n\nlet response = '';\n\nif (queryType === 'counts') {\n  response = '*📊 CREW STATISTICS*\\n\\n';\n  results.forEach(item => {\n    response += `• ${item.metric}: *${item.count}*\\n`;\n  });\n} else if (queryType === 'disembarking') {\n  response = `*🚢 DISEMBARKING CREW (${results.length})*\\n\\n`;\n  results.forEach(item => {\n    response += `• ${item.full_name}\\n`;\n    response += `  Vessel: ${item.vessel_name || 'N/A'}\\n`;\n    response += `  Date: ${formatDate(item.disembarkation)}\\n`;\n    response += `  Days Left: ${item.days_until_disembark}\\n\\n`;\n  });\n} else if (queryType === 'expired_docs' || queryType === 'expiring_docs') {\n  const status = queryType === 'expired_docs' ? 'EXPIRED' : 'EXPIRING';\n  response = `*⚠️ ${status} DOCUMENTS (${results.length})*\\n\\n`;\n  \n  // Group by crew member\n  const byCrew = {};\n  results.forEach(item => {\n    if (!byCrew[item.applicant_id]) {\n      byCrew[item.applicant_id] = {\n        name: item.full_name,\n        docs: []\n      };\n    }\n    byCrew[item.applicant_id].docs.push(item);\n  });\n  \n  Object.values(byCrew).forEach(crew => {\n    response += `• *${crew.name}*\\n`;\n    crew.docs.forEach(doc => {\n      response += `  - ${doc.doc_type}: ${doc.document_name}\\n`;\n      response += `    Expired: ${formatDate(doc.expiry_date)}\\n`;\n    });\n    response += `\\n`;\n  });\n} else if (queryType === 'crew_by_status') {\n  response = `*👥 CREW LIST (${results.length})*\\n\\n`;\n  results.forEach(item => {\n    response += `• ${item.full_name}\\n`;\n    response += `  Position: ${item.primary_position || 'N/A'}\\n`;\n    response += `  Email: ${item.email || 'N/A'}\\n\\n`;\n  });\n}\n\nreturn {\n  json: {\n    response_text: response,\n    result_count: results.length,\n    data: results\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        240
+      ],
+      "id": "c75e0965-63f4-49f1-92bc-02fd3b2aefa5",
+      "name": "Format Short Response"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get data from Prepare Email Data Set node\nconst results = JSON.parse($input.first().json.results_data);\nconst recipientEmail = $input.first().json.recipient_email;\nconst queryType = $input.first().json.query_type;\nconst statusFilter = $input.first().json.status_filter;\nconst resultLimitWarning = results.length >= 500 ? `\n     <div style=\"background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin-bottom: 20px; border-radius: 4px;\">\n       ⚠️ <strong>Result Limit Reached:</strong> This report shows the first 500 results. \n       There may be more records available. Please use the IRIS web interface for the complete list.\n     </div>\n   ` : '';\n\n// Helper function to format date\nfunction formatDate(dateStr) {\n  if (!dateStr || dateStr === '0000-00-00') return 'N/A';\n  try {\n    const date = new Date(dateStr);\n    return date.toLocaleDateString('en-PH', { \n      year: 'numeric', \n      month: 'short', \n      day: 'numeric',\n      timeZone: 'Asia/Manila'\n    });\n  } catch (e) {\n    return 'N/A';\n  }\n}\n\n// Helper function to get current Philippine time\nfunction getPhilippineTime() {\n  return new Date().toLocaleString('en-PH', {\n    year: 'numeric', \n    month: 'long', \n    day: 'numeric', \n    hour: '2-digit', \n    minute: '2-digit',\n    second: '2-digit',\n    timeZone: 'Asia/Manila',\n    hour12: true\n  });\n}\n\nlet subject = '';\nlet htmlBody = `\n<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <style>\n    body {\n      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;\n      padding: 20px;\n      color: #333;\n      background-color: #f5f5f5;\n    }\n    .email-container {\n      max-width: 1000px;\n      margin: 0 auto;\n      background-color: white;\n      border-radius: 8px;\n      box-shadow: 0 2px 8px rgba(0,0,0,0.1);\n      padding: 30px;\n    }\n    h1 {\n      color: #2c3e50;\n      border-bottom: 3px solid #3498db;\n      padding-bottom: 15px;\n      margin-bottom: 25px;\n    }\n    table {\n      width: 100%;\n      border-collapse: collapse;\n      margin: 20px 0;\n      background: white;\n    }\n    th {\n      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\n      color: white;\n      padding: 14px 12px;\n      text-align: left;\n      font-weight: 600;\n      font-size: 14px;\n    }\n    td {\n      padding: 12px;\n      border-bottom: 1px solid #ecf0f1;\n      font-size: 14px;\n    }\n    tr:hover {\n      background-color: #f8f9fa;\n    }\n    tr:last-child td {\n      border-bottom: none;\n    }\n    .footer {\n      margin-top: 40px;\n      padding-top: 25px;\n      border-top: 2px solid #ecf0f1;\n      font-size: 13px;\n      color: #7f8c8d;\n      text-align: center;\n    }\n    .summary {\n      background-color: #f8f9fa;\n      padding: 15px;\n      border-radius: 6px;\n      margin-bottom: 20px;\n      font-weight: 600;\n    }\n    .timezone-note {\n      background-color: #fff3cd;\n      border-left: 4px solid #ffc107;\n      padding: 10px 15px;\n      margin-bottom: 20px;\n      border-radius: 4px;\n      font-size: 13px;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"email-container\">\n`;\n\nif (queryType === 'disembarking') {\n  subject = `Disembarking Crew Report - ${results.length} crew members`;\n  htmlBody += `\n    <h1>🚢 Disembarking Crew Report</h1>\n   <div class=\"timezone-note\">\n     🕐 <strong>Note:</strong> All dates and times are in Philippine Time (PHT, UTC+8)\n   </div>\n   ${resultLimitWarning}\n    <div class=\"summary\">\n      📊 <strong>Total crew disembarking:</strong> ${results.length}\n    </div>\n    <table>\n      <thead>\n        <tr>\n          <th>Crew Name</th>\n          <th>Vessel</th>\n          <th>Principal</th>\n          <th>Position</th>\n          <th>Disembarkation Date</th>\n          <th>Days Left</th>\n        </tr>\n      </thead>\n      <tbody>\n  `;\n  \n  results.forEach(item => {\n    htmlBody += `\n      <tr>\n        <td><strong>${item.full_name}</strong></td>\n        <td>${item.vessel_name || 'N/A'}</td>\n        <td>${item.principal_name || 'N/A'}</td>\n        <td>${item.position || 'N/A'}</td>\n        <td>${formatDate(item.disembarkation)}</td>\n        <td>${item.days_until_disembark || 'N/A'}</td>\n      </tr>\n    `;\n  });\n  \n  htmlBody += `</tbody></table>`;\n  \n} else if (queryType === 'expired_docs' || queryType === 'expiring_docs') {\n  const status = queryType === 'expired_docs' ? 'Expired' : 'Expiring';\n  subject = `${status} Documents Report - ${results.length} documents`;\n  \n  htmlBody += `\n    <h1>⚠️ ${status} Documents Report</h1>\n    <div class=\"timezone-note\">\n      🕐 <strong>Note:</strong> All dates and times are in Philippine Time (PHT, UTC+8)\n    </div>\n    ${resultLimitWarning}\n    <div class=\"summary\">\n      📊 <strong>Total ${status.toLowerCase()} documents:</strong> ${results.length}\n    </div>\n    <table>\n      <thead>\n        <tr>\n          <th>Crew Name</th>\n          <th>Document Type</th>\n          <th>Document Name</th>\n          <th>Expiry Date</th>\n          <th>Email</th>\n        </tr>\n      </thead>\n      <tbody>\n  `;\n  \n  results.forEach(item => {\n    htmlBody += `\n      <tr>\n        <td><strong>${item.full_name}</strong></td>\n        <td>${item.doc_type}</td>\n        <td>${item.document_name}</td>\n        <td>${formatDate(item.expiry_date)}</td>\n        <td>${item.email || 'N/A'}</td>\n      </tr>\n    `;\n  });\n  \n  htmlBody += `</tbody></table>`;\n  \n} else if (queryType === 'crew_by_status') {\n  subject = `Crew List - ${statusFilter || 'All'} (${results.length} crew)`;\n  \n  htmlBody += `\n    <h1>👥 Crew List - ${statusFilter || 'All Status'}</h1>\n    <div class=\"timezone-note\">\n      🕐 <strong>Note:</strong> All dates and times are in Philippine Time (PHT, UTC+8)\n    </div>\n    ${resultLimitWarning}\n    <div class=\"summary\">\n      📊 <strong>Total crew:</strong> ${results.length}\n    </div>\n    <table>\n      <thead>\n        <tr>\n          <th>Crew Name</th>\n          <th>Position</th>\n          <th>Status</th>\n          <th>Email</th>\n          <th>Phone</th>\n        </tr>\n      </thead>\n      <tbody>\n  `;\n  \n  results.forEach(item => {\n    htmlBody += `\n      <tr>\n        <td><strong>${item.full_name}</strong></td>\n        <td>${item.primary_position || 'N/A'}</td>\n        <td>${item.status || 'N/A'}</td>\n        <td>${item.email || 'N/A'}</td>\n        <td>${item.telephone1 || 'N/A'}</td>\n      </tr>\n    `;\n  });\n  \n  htmlBody += `</tbody></table>`;\n  \n} else if (queryType === 'counts') {\n  subject = `Crew Statistics Report`;\n  \n  htmlBody += `\n    <h1>📊 Crew Statistics</h1>\n    <div class=\"timezone-note\">\n      🕐 <strong>Note:</strong> All dates and times are in Philippine Time (PHT, UTC+8)\n    </div>\n    ${resultLimitWarning}\n    <table>\n      <thead>\n        <tr>\n          <th style=\"width: 70%;\">Metric</th>\n          <th style=\"width: 30%;\">Count</th>\n        </tr>\n      </thead>\n      <tbody>\n  `;\n  \n  results.forEach(item => {\n    htmlBody += `\n      <tr>\n        <td>${item.metric}</td>\n        <td><strong>${item.count}</strong></td>\n      </tr>\n    `;\n  });\n  \n  htmlBody += `</tbody></table>`;\n}\n\nhtmlBody += `\n    <div class=\"footer\">\n      <p><strong>IRIS Assistant System</strong></p>\n      <p>This email was automatically generated by the IRIS Assistant.</p>\n      <p>For questions or support, please contact your administrator.</p>\n      <p style=\"margin-top: 15px;\"><em>Generated on ${getPhilippineTime()} (Philippine Time)</em></p>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\nreturn {\n  json: {\n    recipient_email: recipientEmail,\n    subject: subject,\n    html_body: htmlBody,\n    result_count: results.length,\n    telegram_response: `I've sent a detailed report with ${results.length} results to ${recipientEmail}`\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        48
+      ],
+      "id": "f9358b8e-c073-487c-8b1d-f9a94c9040ff",
+      "name": "Build Email Report"
+    },
+    {
+      "parameters": {
+        "fromEmail": "go@iol.ph",
+        "toEmail": "={{ $json.recipient_email }}",
+        "subject": "={{ $json.subject }}",
+        "html": "={{ $json.html_body }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.mailjet",
+      "typeVersion": 1,
+      "position": [
+        1792,
+        48
+      ],
+      "id": "0a5eff44-a8d0-4c7b-aa93-ce531e5f7cfb",
+      "name": "Send Email Report",
+      "credentials": {
+        "mailjetEmailApi": {
+          "id": "WX1bgYZp5SSfb4nJ",
+          "name": "Mailjet Email account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2016,
+        144
+      ],
+      "id": "49dcfb3c-98f3-4901-9b9a-8c5a0273c14c",
+      "name": "Final Response"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e831564d-4bb0-41de-a017-fe10a4a07792",
+              "name": "results_data",
+              "value": "={{ JSON.stringify($input.all().map(i => i.json)) }}",
+              "type": "string"
+            },
+            {
+              "id": "91c44de7-7e09-43aa-a4c7-e5f9d68ef78f",
+              "name": "recipient_email",
+              "value": "={{ $('Store Trigger Parameters').first().json.recipient_email }}",
+              "type": "string"
+            },
+            {
+              "id": "8a20064d-fb6d-4377-8a74-bf3f3376a8dd",
+              "name": "query_type",
+              "value": "={{ $('Store Trigger Parameters').first().json.query_type }}",
+              "type": "string"
+            },
+            {
+              "id": "9c4055cc-17ff-49a2-b663-e5b66e60a98d",
+              "name": "status_filter",
+              "value": "={{ $('Store Trigger Parameters').first().json.status_filter }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1344,
+        48
+      ],
+      "id": "eef90317-75df-4c86-9ffb-66acb79b7883",
+      "name": "Prepare Email Data"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2ffbb217-47e6-4dea-9585-2a2d0016b5c2",
+              "name": "query_type",
+              "value": "={{ $json.query_type }}",
+              "type": "string"
+            },
+            {
+              "id": "d8ae0210-3bc5-48b7-9e9e-4e1c591707fc",
+              "name": "days",
+              "value": "={{ $json.days || 30 }}",
+              "type": "string"
+            },
+            {
+              "id": "b566d773-5b21-4962-a05a-d075169c41ea",
+              "name": "status_filter",
+              "value": "={{ $json.status_filter || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "46d30b82-18f3-4c87-9da0-4c65c9246761",
+              "name": "doc_category",
+              "value": "={{ $json.doc_category || 'all' }}",
+              "type": "string"
+            },
+            {
+              "id": "f9378673-3b82-4dad-90cb-a4a686b4f330",
+              "name": "recipient_email",
+              "value": "={{ $json.recipient_email }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        144
+      ],
+      "id": "c32dfd7a-3952-42cd-ada2-84e7876dc1ed",
+      "name": "Store Trigger Parameters"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Store Trigger Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Query Type": {
+      "main": [
+        [
+          {
+            "node": "Query Disembarking Crew",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Query Expired Documents",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Query Expiring Documents",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Query Crew by Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Query Counts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Expiring Documents": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Query Disembarking Crew": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Expired Documents": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Query Crew by Status": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Query Counts": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Check if Results Need Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if Results Need Email": {
+      "main": [
+        [
+          {
+            "node": "Prepare Email Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Short Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Email Report": {
+      "main": [
+        [
+          {
+            "node": "Send Email Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email Report": {
+      "main": [
+        [
+          {
+            "node": "Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Short Response": {
+      "main": [
+        [
+          {
+            "node": "Final Response",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Prepare Email Data": {
+      "main": [
+        [
+          {
+            "node": "Build Email Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Trigger Parameters": {
+      "main": [
+        [
+          {
+            "node": "Route Query Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "54180e1b-70a7-49ec-a9b9-24300fd1be13",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "833ff8930db72d7a0f274bb3f9fe76a232d6d1601cfd2eda8ac6fefd1c585259"
+  },
+  "id": "gWJgOmHMMROCZpxa",
+  "tags": []
+}
