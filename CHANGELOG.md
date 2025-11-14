@@ -90,7 +90,7 @@ This version represents a complete architectural redesign with enhanced AI capab
 
 ---
 
-## [1.0.0] - 2025-10-15
+## [1.0.0] - 2025-10-04
 
 ### Initial Release
 
