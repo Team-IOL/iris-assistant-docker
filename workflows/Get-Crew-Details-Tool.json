@@ -1,0 +1,268 @@
+{
+  "name": "Get Crew Details Tool",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "applicant_id"
+            },
+            {
+              "name": "applicant_name"
+            },
+            {
+              "name": "info_type"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "e011a43c-9bf3-4575-b0b8-bfc7e7fedc41",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  p.applicant_id,\n  CONCAT(\n    COALESCE(p.fname, ''), ' ',\n    COALESCE(p.mname, ''), ' ',\n    COALESCE(p.lname, ''), ' ',\n    COALESCE(p.suffix, '')\n  ) AS full_name,\n  p.fname,\n  p.mname,\n  p.lname,\n  p.suffix,\n  p.status,\n  p.email,\n  p.telephone1,\n  p.address1a,\n  p.address1b,\n  p.birthdate,\n  p.birthplace,\n  p.civil_status,\n  CASE \n    WHEN p.sex = 'M' THEN 'Male'\n    WHEN p.sex = 'F' THEN 'Female'\n  END AS sex,\n  p.nationality,\n  CASE \n    WHEN p.currentstate = 'I' THEN 'Inactive'\n    WHEN p.currentstate = 'A' THEN 'Active'\n    WHEN p.currentstate = 'RT' THEN 'Retired'\n    WHEN p.currentstate = 'NR' THEN 'Not-for-Rehire'\n    WHEN p.currentstate = 'DC' THEN 'Deceased'\n  END AS current_state,\n  pos1.name AS primary_position,\n  pos2.name AS secondary_position,\n  \n  -- Deployment info\n  pr.vessel_id,\n  v.name AS vessel_name,\n  prin.name AS principal_name,\n  pr.embarkation,\n  pr.disembarkation,\n  pr.contract_term_mos,\n  pos3.name AS deployment_position\n\nFROM personal p\nLEFT JOIN positions pos1 ON p.position_id1 = pos1.position_id\nLEFT JOIN positions pos2 ON p.position_id2 = pos2.position_id\nLEFT JOIN process pr ON p.applicant_id = pr.applicant_id\nLEFT JOIN vessels v ON pr.vessel_id = v.vessel_id\nLEFT JOIN principals prin ON pr.principal_id = prin.principal_id\nLEFT JOIN positions pos3 ON pr.position_id = pos3.position_id\n\nWHERE p.applicant_id = {{ $json.applicant_id }}\nLIMIT 1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "208b9c20-fe48-4494-8c00-bdfdee25e423",
+      "name": "Get Personal & Deployment Info",
+      "credentials": {
+        "mySql": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "IRIS_Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9f905c78-70a2-43c4-9148-0ba41147f044",
+              "name": "personal_data",
+              "value": "={{ JSON.stringify($json) }}",
+              "type": "string"
+            },
+            {
+              "id": "e28b83c1-9bd8-4ec5-add2-b03c472559c8",
+              "name": "applicant_id",
+              "value": "={{ $json.applicant_id }}",
+              "type": "string"
+            },
+            {
+              "id": "4586040b-71f8-418d-9ec2-8b7f99181988",
+              "name": "info_type",
+              "value": "=={{ $parameter.info_type || 'all' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        448,
+        0
+      ],
+      "id": "d7ac5544-b4b0-492e-8c60-77e21cc99ff7",
+      "name": "Store Personal Info"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SET @applicant_id = {{ $json.applicant_id }};\n\n-- Use identical deduplication logic as Find Available Documents\nSELECT \n  category,\n  document_name,\n  document_number,\n  issue_date,\n  expiry_date,\n  doc_record_id,\n  doc_id,\n  status,\n  file_status,\n  issued_by,\n  doc_file\nFROM (\n  -- Personal Documents (EXCLUDE VACCINES)\n  SELECT \n    'Documents' AS category,\n    d.name AS document_name,\n    ad.doc_num AS document_number,\n    ad.issue_date,\n    ad.expiry_date,\n    ad.id as doc_record_id,\n    ad.doc_id,\n    CASE \n      WHEN ad.expiry_date IS NULL OR ad.expiry_date = '0000-00-00' THEN 'No Expiry'\n      WHEN ad.expiry_date < CURDATE() THEN 'Expired'\n      WHEN ad.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY) THEN 'Expiring Soon'\n      ELSE 'Valid'\n    END AS status,\n    CASE \n      WHEN ad.doc_file IS NOT NULL AND ad.doc_file != '' THEN 'Available'\n      ELSE 'Not Available'\n    END AS file_status,\n    ad.issued_by AS issued_by,\n    ad.doc_file\n  FROM applicant_documents ad\n  JOIN documents d ON ad.doc_id = d.id\n  WHERE ad.applicant_id = @applicant_id\n    AND ad.archive = 0\n    AND UPPER(d.name) NOT LIKE '%VACCINE%'\n    AND (\n      YEAR(ad.issue_date) >= 2025\n      OR ad.expiry_date >= CURDATE()\n      OR ad.expiry_date = '0000-00-00'\n      OR ad.expiry_date IS NULL\n    )\n    AND ad.id = (\n      SELECT MAX(ad2.id)\n      FROM applicant_documents ad2\n      WHERE ad2.doc_file = ad.doc_file\n        AND ad2.applicant_id = @applicant_id\n        AND ad2.archive = 0\n    )\n\n  UNION ALL\n\n  -- Licenses\n  SELECT \n    'Licenses' AS category,\n    l.name AS document_name,\n    al.license_num AS document_number,\n    al.issue_date,\n    al.expiry_date,\n    al.id as doc_record_id,\n    al.license_id as doc_id,\n    CASE \n      WHEN al.expiry_date IS NULL OR al.expiry_date = '0000-00-00' THEN 'No Expiry'\n      WHEN al.expiry_date < CURDATE() THEN 'Expired'\n      WHEN al.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY) THEN 'Expiring Soon'\n      ELSE 'Valid'\n    END AS status,\n    CASE \n      WHEN al.doc_file IS NOT NULL AND al.doc_file != '' THEN 'Available'\n      ELSE 'Not Available'\n    END AS file_status,\n    al.issued_by AS issued_by,\n    al.doc_file\n  FROM applicant_licenses al\n  JOIN licenses l ON al.license_id = l.id\n  WHERE al.applicant_id = @applicant_id\n    AND al.archive = 0\n    AND (\n      YEAR(al.issue_date) >= 2025\n      OR al.expiry_date >= CURDATE()\n      OR al.expiry_date = '0000-00-00'\n      OR al.expiry_date IS NULL\n    )\n    AND al.id = (\n      SELECT MAX(al2.id)\n      FROM applicant_licenses al2\n      WHERE al2.doc_file = al.doc_file\n        AND al2.applicant_id = @applicant_id\n        AND al2.archive = 0\n    )\n\n  UNION ALL\n\n\n  -- Training - COP Certificates (Listed Individually)\n  SELECT \n    'Training (COP)' AS category,\n    tc.name AS document_name,\n    CAST(t.id AS CHAR) AS document_number,\n    t.issue_date,\n    t.expiry_date,\n    t.id as doc_record_id,\n    t.training_course_id as doc_id,\n    CASE \n      WHEN t.expiry_date IS NULL OR t.expiry_date = '0000-00-00' THEN 'No Expiry'\n      WHEN t.expiry_date < CURDATE() THEN 'Expired'\n      WHEN t.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY) THEN 'Expiring Soon'\n      ELSE 'Valid'\n    END AS status,\n    CASE \n      WHEN t.doc_file IS NOT NULL AND t.doc_file != '' THEN 'Available'\n      ELSE 'Not Available'\n    END AS file_status,\n    tcenter.name AS issued_by,\n    t.doc_file\n  FROM training t\n  JOIN training_courses tc ON t.training_course_id = tc.id\n  LEFT JOIN training_center tcenter ON t.training_center_id = tcenter.center_id\n  WHERE t.applicant_id = @applicant_id\n    AND t.archive = 0\n    AND (\n      UPPER(tc.name) LIKE '%ADVANCED FIRE FIGHTING%' OR\n      UPPER(tc.name) LIKE '%PROFICIENCY IN SURVIVAL CRAFT%' OR\n      UPPER(tc.name) LIKE '%FAST RESCUE BOAT%' OR\n      UPPER(tc.name) LIKE '%SHIP SECURITY AWARENESS%' OR\n      UPPER(tc.name) LIKE '%SEAFARERS WITH DESIGNATED SECURITY DUTIES%' OR\n      UPPER(tc.name) LIKE '%SHIP SECURITY OFFICER%' OR\n      UPPER(tc.name) LIKE '%MECA%' OR\n      UPPER(tc.name) LIKE '%MEDICAL CARE%' OR\n      UPPER(tc.name) LIKE '%MEFA%' OR\n      UPPER(tc.name) LIKE '%MEDICAL FIRST AID%'\n    )\n    AND (\n      YEAR(t.issue_date) >= 2025\n      OR t.expiry_date >= CURDATE()\n      OR t.expiry_date = '0000-00-00'\n      OR t.expiry_date IS NULL\n    )\n    AND t.id = (\n      SELECT MAX(t2.id)\n      FROM training t2\n      WHERE t2.doc_file = t.doc_file\n        AND t2.applicant_id = @applicant_id\n        AND t2.archive = 0\n    )\n\n  UNION ALL\n\n  -- Training - Other Certificates (Summary Only)\n  SELECT \n    'Training (Other)' AS category,\n    CONCAT('Other Training Certificates (', COUNT(*), ')') AS document_name,\n    'SUMMARY' AS document_number,\n    NULL AS issue_date,\n    NULL AS expiry_date,\n    NULL as doc_record_id,\n    NULL as doc_id,\n    'N/A' AS status,\n    'N/A' AS file_status,\n    NULL AS issued_by,\n    NULL AS doc_file\n  FROM training t\n  JOIN training_courses tc ON t.training_course_id = tc.id\n  WHERE t.applicant_id = @applicant_id\n    AND t.archive = 0\n    AND NOT (\n      UPPER(tc.name) LIKE '%ADVANCED FIRE FIGHTING%' OR\n      UPPER(tc.name) LIKE '%PROFICIENCY IN SURVIVAL CRAFT%' OR\n      UPPER(tc.name) LIKE '%FAST RESCUE BOAT%' OR\n      UPPER(tc.name) LIKE '%SHIP SECURITY AWARENESS%' OR\n      UPPER(tc.name) LIKE '%SEAFARERS WITH DESIGNATED SECURITY DUTIES%' OR\n      UPPER(tc.name) LIKE '%SHIP SECURITY OFFICER%' OR\n      UPPER(tc.name) LIKE '%MECA%' OR\n      UPPER(tc.name) LIKE '%MEDICAL CARE%' OR\n      UPPER(tc.name) LIKE '%MEFA%' OR\n      UPPER(tc.name) LIKE '%MEDICAL FIRST AID%'\n    )\n    AND (\n      YEAR(t.issue_date) >= 2025\n      OR t.expiry_date >= CURDATE()\n      OR t.expiry_date = '0000-00-00'\n      OR t.expiry_date IS NULL\n    )\n    AND t.id = (\n      SELECT MAX(t2.id)\n      FROM training t2\n      WHERE t2.doc_file = t.doc_file\n        AND t2.applicant_id = @applicant_id\n        AND t2.archive = 0\n    )\n  HAVING COUNT(*) > 0\n\n\n  UNION ALL\n\n  -- Vaccines\n  SELECT \n    'Vaccines' AS category,\n    v.name AS document_name,\n    av.certificate_num AS document_number,\n    av.issue_date,\n    av.expiry_date,\n    av.id as doc_record_id,\n    av.vaccine_id as doc_id,\n    CASE \n      WHEN av.expiry_date IS NULL OR av.expiry_date = '0000-00-00' THEN 'No Expiry'\n      WHEN av.expiry_date < CURDATE() THEN 'Expired'\n      WHEN av.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY) THEN 'Expiring Soon'\n      ELSE 'Valid'\n    END AS status,\n    CASE \n      WHEN av.doc_file IS NOT NULL AND av.doc_file != '' THEN 'Available'\n      ELSE 'Not Available'\n    END AS file_status,\n    clinic.name AS issued_by,\n    av.doc_file\n  FROM applicant_vaccines av\n  JOIN vaccines v ON av.vaccine_id = v.id\n  LEFT JOIN clinics clinic ON av.clinic_id = clinic.clinic_id\n  WHERE av.applicant_id = @applicant_id\n    AND av.archive = 0\n    AND (\n      YEAR(av.issue_date) >= 2025\n      OR av.expiry_date >= CURDATE()\n      OR av.expiry_date = '0000-00-00'\n      OR av.expiry_date IS NULL\n    )\n    AND av.id = (\n      SELECT MAX(av2.id)\n      FROM applicant_vaccines av2\n      WHERE av2.doc_file = av.doc_file\n        AND av2.applicant_id = @applicant_id\n        AND av2.archive = 0\n    )\n\n  UNION ALL\n\n  -- Visas\n  SELECT \n    'Visas' AS category,\n    v.name AS document_name,\n    av.doc_num AS document_number,\n    av.issue_date,\n    av.expiry_date,\n    av.id as doc_record_id,\n    av.visa_id as doc_id,\n    CASE \n      WHEN av.expiry_date IS NULL OR av.expiry_date = '0000-00-00' THEN 'No Expiry'\n      WHEN av.expiry_date < CURDATE() THEN 'Expired'\n      WHEN av.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY) THEN 'Expiring Soon'\n      ELSE 'Valid'\n    END AS status,\n    CASE \n      WHEN av.doc_file IS NOT NULL AND av.doc_file != '' THEN 'Available'\n      ELSE 'Not Available'\n    END AS file_status,\n    av.issued_by AS issued_by,\n    av.doc_file\n  FROM applicant_visas av\n  LEFT JOIN visas v ON av.visa_id = v.id\n  WHERE av.applicant_id = @applicant_id\n    AND COALESCE(av.archive, 0) = 0\n    AND (\n      YEAR(av.issue_date) >= 2025\n      OR av.expiry_date >= CURDATE()\n      OR av.expiry_date = '0000-00-00'\n      OR av.expiry_date IS NULL\n    )\n    AND av.id = (\n      SELECT MAX(av2.id)\n      FROM applicant_visas av2\n      WHERE av2.doc_file = av.doc_file\n        AND av2.applicant_id = @applicant_id\n        AND COALESCE(av2.archive, 0) = 0\n    )\n\n  UNION ALL\n\n  -- Flag Endorsements (NO GROUP BY - use MAX(id) like others)\n  SELECT \n    'Flag Endorsements' AS category,\n    CONCAT(COALESCE(c.name, 'Unknown'), ' Flag') AS document_name,\n    afe.license_num AS document_number,\n    afe.issue_date,\n    afe.expiry_date,\n    afe.id as doc_record_id,\n    afe.flag_endorsement_id as doc_id,\n    CASE \n      WHEN afe.expiry_date IS NULL OR afe.expiry_date = '0000-00-00' THEN 'No Expiry'\n      WHEN afe.expiry_date < CURDATE() THEN 'Expired'\n      WHEN afe.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY) THEN 'Expiring Soon'\n      ELSE 'Valid'\n    END AS status,\n    CASE \n      WHEN afe.doc_file IS NOT NULL AND afe.doc_file != '' THEN 'Available'\n      ELSE 'Not Available'\n    END AS file_status,\n    afe.issued_by AS issued_by,\n    afe.doc_file\n  FROM applicant_flag_endorsements afe\n  LEFT JOIN flag_endorsements fe ON afe.flag_endorsement_id = fe.id\n  LEFT JOIN country c ON fe.country_id = c.country_id\n  WHERE afe.applicant_id = @applicant_id\n    AND afe.archive = 0\n    AND (\n      YEAR(afe.issue_date) >= 2025\n      OR afe.expiry_date >= CURDATE()\n      OR afe.expiry_date = '0000-00-00'\n      OR afe.expiry_date IS NULL\n    )\n    AND afe.id = (\n      SELECT MAX(afe2.id)\n      FROM applicant_flag_endorsements afe2\n      WHERE afe2.doc_file = afe.doc_file\n        AND afe2.applicant_id = @applicant_id\n        AND afe2.archive = 0\n    )\n\n  UNION ALL\n\n  -- Medical Certificates\n  SELECT \n    'Medical' AS category,\n    mc.name AS document_name,\n    m.certificate_num AS document_number,\n    m.issue_date,\n    m.expiry_date,\n    m.medical_id as doc_record_id,\n    m.certificate_id as doc_id,\n    CASE \n      WHEN m.expiry_date IS NULL OR m.expiry_date = '0000-00-00' THEN 'No Expiry'\n      WHEN m.expiry_date < CURDATE() THEN 'Expired'\n      WHEN m.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY) THEN 'Expiring Soon'\n      ELSE 'Valid'\n    END AS status,\n    CASE \n      WHEN m.doc_file IS NOT NULL AND m.doc_file != '' THEN 'Available'\n      ELSE 'Not Available'\n    END AS file_status,\n    c.name AS issued_by,\n    m.doc_file\n  FROM medical m\n  JOIN medical_certificates mc ON m.certificate_id = mc.id\n  LEFT JOIN clinics c ON m.clinic_id = c.clinic_id\n  WHERE m.applicant_id = @applicant_id\n    AND m.archive = 0\n    AND (\n      YEAR(m.issue_date) >= 2025\n      OR m.expiry_date >= CURDATE()\n      OR m.expiry_date = '0000-00-00'\n      OR m.expiry_date IS NULL\n    )\n    AND m.medical_id = (\n      SELECT MAX(m2.medical_id)\n      FROM medical m2\n      WHERE m2.doc_file = m.doc_file\n        AND m2.applicant_id = @applicant_id\n        AND m2.archive = 0\n    )\n) AS all_documents\nORDER BY category, document_name;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        672,
+        0
+      ],
+      "id": "abac1dfd-e4de-4e7a-bf8e-aa6cedf05860",
+      "name": "Get Document Status",
+      "alwaysOutputData": true,
+      "credentials": {
+        "mySql": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "IRIS_Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6865007f-5258-4bd2-bdee-f8a79f54b277",
+              "name": "documents_json",
+              "value": "={{ $('Get Document Status').all().map(item => item.json) }}",
+              "type": "string"
+            },
+            {
+              "id": "7a6b6ed8-362d-41cb-86f9-447745ad3460",
+              "name": "personal_json",
+              "value": "={{ $('Store Personal Info').first().json.personal_data }}",
+              "type": "string"
+            },
+            {
+              "id": "e3f4ebdc-d1db-41de-806b-2afe66206eab",
+              "name": "info_type",
+              "value": "={{ $('Store Personal Info').first().json.info_type }}",
+              "type": "string"
+            },
+            {
+              "id": "c55b225e-2e4a-4c21-aa21-928430a0c0e8",
+              "name": "emailable_count",
+              "value": "={{ $('Count Sendable Documents').first().json.emailable_count }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1120,
+        0
+      ],
+      "id": "c5795c9c-a943-41a7-92bd-3107c978e85f",
+      "name": "Prepare Data for Formatting",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Get Crew Details → Format Response (SIMPLIFIED - AI Formatting)\n * Returns structured data with clear counts - AI handles formatting\n */\n\n// Parse input data\nconst first = $input.first()?.json || items[0].json;\nconst personalData = JSON.parse(first.personal_json || '{}');\nconst infoType = first.info_type;\nconst documentsDataRaw = JSON.parse(first.documents_json || '[]');\n\n// Flatten documents if nested\nlet documents = Array.isArray(documentsDataRaw) && documentsDataRaw[0]?.data \n  ? documentsDataRaw.flatMap(item => item?.data || [])\n  : documentsDataRaw;\n\n// Normalize document fields\ndocuments = documents.map(d => ({\n  ...d,\n  document_name: d.document_name || 'Unknown',\n  category: d.category || 'Documents',\n  doc_record_id: d.doc_record_id ?? d.record_id,\n  doc_file: d.doc_file,\n  status: d.status,\n  issue_date: d.issue_date,\n  expiry_date: d.expiry_date\n}));\n\n// ✅ No deduplication needed - SQL already handled it with MAX(id)\n// Just ensure documents are valid\ndocuments = documents.filter(d => d.doc_file && d.doc_file.trim() !== '');\n\n// Count documents by category\nconst categoryCounts = documents.reduce((acc, d) => {\n  const cat = d.category || 'Unknown';\n  acc[cat] = (acc[cat] || 0) + 1;\n  return acc;\n}, {});\n\n// Calculate counts with proper separation\nconst emailableCount = documents.filter(d => d.category !== 'Medical').length;\nconst medicalCount = documents.filter(d => d.category === 'Medical').length;\nconst totalCount = emailableCount + medicalCount;\n\n// Build document map for sending\nconst documentMap = [];\nconst documentMapKV = {};\n\ndocuments.forEach((doc, idx) => {\n  const num = idx + 1;\n  const isEmailable = doc.category !== 'Medical';\n  \n  documentMap.push({\n    number: num,\n    document_name: doc.document_name,\n    category: doc.category,\n    doc_record_id: doc.doc_record_id,\n    is_emailable: isEmailable,\n    status: doc.status,\n    expiry_date: doc.expiry_date\n  });\n  \n  if (isEmailable && doc.doc_record_id) {\n    documentMapKV[String(num)] = String(doc.doc_record_id);\n  }\n});\n\n// Build simple text response - AI will format this\nlet responseText = `Available documents for ${personalData.full_name || 'Unknown'} (ID: ${personalData.applicant_id || 'N/A'}).\\n\\n`;\n\n// FIX #1: Clear count breakdown\nif (medicalCount > 0) {\n  responseText += `Total: ${totalCount} documents (${emailableCount} emailable + ${medicalCount} medical view-only)\\n\\n`;\n} else {\n  responseText += `Total: ${emailableCount} emailable documents\\n\\n`;\n}\n\n// FIX #2: Category summary\nresponseText += `Categories:\\n`;\nconst categories = ['Documents', 'Licenses', 'Training', 'Vaccines', 'Visas', 'Flag Endorsements'];\ncategories.forEach(cat => {\n  if (categoryCounts[cat] > 0) {\n    responseText += `${cat}: ${categoryCounts[cat]}\\n`;\n  }\n});\n\nif (medicalCount > 0) {\n  responseText += `Medical: ${medicalCount} (view-only)\\n`;\n}\n\nresponseText += `\\n`;\n\n// Instructions\nresponseText += `Reply with:\\n`;\nresponseText += `- \"list\" to see all documents\\n`;\nresponseText += `- \"all\" to email all ${emailableCount} documents\\n`;\nresponseText += `- Numbers to email specific documents\\n`;\nif (medicalCount > 0) {\n  responseText += `- \"view medical\" to see medical documents\\n\\n`;\n  responseText += `Note: Medical documents cannot be emailed.`;\n}\n\n// Return structured data\nreturn {\n  json: {\n    response_text: responseText,\n    crew_data: {\n      personal: personalData,\n      documents: documents,\n      document_map: documentMap,\n      document_map_kv: documentMapKV,\n      summary: {\n        total_documents: totalCount,\n        emailable_documents: emailableCount,\n        medical_documents: medicalCount,\n        per_category: categoryCounts,\n        has_medical: medicalCount > 0\n      }\n    }\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        0
+      ],
+      "id": "9c3f1782-3ed4-4116-b0dc-618f14e3db00",
+      "name": "Format Response"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SET @applicant_id = {{ $('Store Personal Info').first().json.applicant_id }};\n\n-- Count using IDENTICAL logic as Find Available Documents\nSELECT COUNT(*) as emailable_count\nFROM (\n  -- TRAINING DOCUMENTS - COP Certificates Only\n  SELECT t.doc_file\n  FROM training t\n  LEFT JOIN training_courses tc ON t.training_course_id = tc.id\n  WHERE t.applicant_id = @applicant_id \n    AND t.archive = 0\n    AND t.doc_file IS NOT NULL\n    AND t.doc_file != ''\n    AND (\n      UPPER(tc.name) LIKE '%ADVANCED FIRE FIGHTING%' OR\n      UPPER(tc.name) LIKE '%PROFICIENCY IN SURVIVAL CRAFT%' OR\n      UPPER(tc.name) LIKE '%FAST RESCUE BOAT%' OR\n      UPPER(tc.name) LIKE '%SHIP SECURITY AWARENESS%' OR\n      UPPER(tc.name) LIKE '%SEAFARERS WITH DESIGNATED SECURITY DUTIES%' OR\n      UPPER(tc.name) LIKE '%SHIP SECURITY OFFICER%' OR\n      UPPER(tc.name) LIKE '%MECA%' OR\n      UPPER(tc.name) LIKE '%MEDICAL CARE%' OR\n      UPPER(tc.name) LIKE '%MEFA%' OR\n      UPPER(tc.name) LIKE '%MEDICAL FIRST AID%'\n    )\n    AND (\n      YEAR(t.issue_date) >= 2025\n      OR t.expiry_date >= CURDATE()\n      OR t.expiry_date = '0000-00-00'\n      OR t.expiry_date IS NULL\n    )\n    AND t.id = (\n      SELECT MAX(t2.id)\n      FROM training t2\n      WHERE t2.doc_file = t.doc_file\n        AND t2.applicant_id = @applicant_id\n        AND t2.archive = 0\n    )\n    \n  UNION ALL\n  \n  -- LICENSE DOCUMENTS\n  SELECT al.doc_file\n  FROM applicant_licenses al\n  WHERE al.applicant_id = @applicant_id \n    AND al.archive = 0\n    AND al.doc_file IS NOT NULL\n    AND al.doc_file != ''\n    AND (\n      YEAR(al.issue_date) >= 2025\n      OR al.expiry_date >= CURDATE()\n      OR al.expiry_date = '0000-00-00'\n      OR al.expiry_date IS NULL\n    )\n    AND al.id = (\n      SELECT MAX(al2.id)\n      FROM applicant_licenses al2\n      WHERE al2.doc_file = al.doc_file\n        AND al2.applicant_id = @applicant_id\n        AND al2.archive = 0\n    )\n    \n  UNION ALL\n  \n  -- GENERAL DOCUMENTS (EXCLUDE VACCINES)\n  SELECT ad.doc_file\n  FROM applicant_documents ad\n  LEFT JOIN documents d ON ad.doc_id = d.id\n  WHERE ad.applicant_id = @applicant_id \n    AND ad.archive = 0\n    AND UPPER(d.name) NOT LIKE '%VACCINE%'\n    AND ad.doc_file IS NOT NULL\n    AND ad.doc_file != ''\n    AND (\n      YEAR(ad.issue_date) >= 2025\n      OR ad.expiry_date >= CURDATE()\n      OR ad.expiry_date = '0000-00-00'\n      OR ad.expiry_date IS NULL\n    )\n    AND ad.id = (\n      SELECT MAX(ad2.id)\n      FROM applicant_documents ad2\n      WHERE ad2.doc_file = ad.doc_file\n        AND ad2.applicant_id = @applicant_id\n        AND ad2.archive = 0\n    )\n    \n  UNION ALL\n  \n  -- VACCINE DOCUMENTS\n  SELECT av.doc_file\n  FROM applicant_vaccines av\n  WHERE av.applicant_id = @applicant_id \n    AND av.archive = 0\n    AND av.doc_file IS NOT NULL\n    AND av.doc_file != ''\n    AND (\n      YEAR(av.issue_date) >= 2025\n      OR av.expiry_date >= CURDATE()\n      OR av.expiry_date = '0000-00-00'\n      OR av.expiry_date IS NULL\n    )\n    AND av.id = (\n      SELECT MAX(av2.id)\n      FROM applicant_vaccines av2\n      WHERE av2.doc_file = av.doc_file\n        AND av2.applicant_id = @applicant_id\n        AND av2.archive = 0\n    )\n\n  UNION ALL\n\n  -- VISA DOCUMENTS\n  SELECT vis.doc_file\n  FROM applicant_visas vis\n  WHERE vis.applicant_id = @applicant_id \n    AND COALESCE(vis.archive, 0) = 0\n    AND vis.doc_file IS NOT NULL\n    AND vis.doc_file != ''\n    AND (\n      YEAR(vis.issue_date) >= 2025\n      OR vis.expiry_date >= CURDATE()\n      OR vis.expiry_date = '0000-00-00'\n      OR vis.expiry_date IS NULL\n    )\n    AND vis.id = (\n      SELECT MAX(vis2.id)\n      FROM applicant_visas vis2\n      WHERE vis2.doc_file = vis.doc_file\n        AND vis2.applicant_id = @applicant_id\n        AND COALESCE(vis2.archive, 0) = 0\n    )\n\n  UNION ALL\n\n  -- FLAG ENDORSEMENT DOCUMENTS\n  SELECT afe.doc_file\n  FROM applicant_flag_endorsements afe\n  WHERE afe.applicant_id = @applicant_id \n    AND afe.archive = 0\n    AND afe.doc_file IS NOT NULL\n    AND afe.doc_file != ''\n    AND (\n      YEAR(afe.issue_date) >= 2025\n      OR afe.expiry_date >= CURDATE()\n      OR afe.expiry_date = '0000-00-00'\n      OR afe.expiry_date IS NULL\n    )\n    AND afe.id = (\n      SELECT MAX(afe2.id)\n      FROM applicant_flag_endorsements afe2\n      WHERE afe2.doc_file = afe.doc_file\n        AND afe2.applicant_id = @applicant_id\n        AND afe2.archive = 0\n    )\n) AS all_docs_after_dedup;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        896,
+        0
+      ],
+      "id": "366f8cd2-093b-420e-a1b0-898ec6e7fc48",
+      "name": "Count Sendable Documents",
+      "executeOnce": true,
+      "credentials": {
+        "mySql": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "IRIS_Database"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Get Personal & Deployment Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Personal & Deployment Info": {
+      "main": [
+        [
+          {
+            "node": "Store Personal Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Personal Info": {
+      "main": [
+        [
+          {
+            "node": "Get Document Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Document Status": {
+      "main": [
+        [
+          {
+            "node": "Count Sendable Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Data for Formatting": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count Sendable Documents": {
+      "main": [
+        [
+          {
+            "node": "Prepare Data for Formatting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Manila",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "8730f152-4078-43bb-8282-adbf23695ce1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "REPLACE_WITH_YOUR_INSTANCE_ID"
+  },
+  "id": "kyW4EO4JJUqNAXN8",
+  "tags": []
+}

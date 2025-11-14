@@ -1,0 +1,455 @@
+{
+  "name": "Find Available Documents",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "applicant_id",
+              "type": "number"
+            },
+            {
+              "name": "document_selection"
+            },
+            {
+              "name": "recipient_email"
+            },
+            {
+              "name": "applicant_name"
+            },
+            {
+              "name": "telegram_username"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        144
+      ],
+      "id": "0b2186b2-b1ef-4bb4-8477-d81c617a2b56",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SET @applicant_id = {{ $json.applicant_id }};\n\n-- Deduplicate by keeping only the latest record for each doc_file\nSELECT \n  source_table,\n  category,\n  applicant_id,\n  document_name,\n  issue_date,\n  expiry_date,\n  doc_file,\n  attachment_link,\n  doc_record_id,\n  status,\n  doc_type,\n  issued_by\nFROM (\n  -- TRAINING DOCUMENTS - COP Certificates Only\n  SELECT \n    'training' as source_table,\n    'Training (COP)' as category,\n    t.applicant_id,\n    tc.name as document_name,\n    t.issue_date,\n    t.expiry_date,\n    t.doc_file,\n    CONCAT('https://adamson-bucket-name.s3-us-west-2.amazonaws.com/attachments/trainings/', t.applicant_id, '/', t.doc_file) AS attachment_link,\n    t.id as doc_record_id,\n    CASE \n      WHEN t.expiry_date IS NULL OR t.expiry_date = '0000-00-00' THEN 'No Expiry'\n      WHEN t.expiry_date < CURDATE() THEN 'Expired'\n      WHEN t.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY) THEN 'Expiring'\n      ELSE 'Valid'\n    END as status,\n    'Training (COP)' as doc_type,\n    tcenter.name as issued_by\n  FROM training t\n  LEFT JOIN training_courses tc ON t.training_course_id = tc.id\n  LEFT JOIN training_center tcenter ON t.training_center_id = tcenter.center_id\n  WHERE t.applicant_id = @applicant_id \n    AND t.archive = 0\n    AND t.doc_file IS NOT NULL\n    AND t.doc_file != ''\n    AND (\n      UPPER(tc.name) LIKE '%ADVANCED FIRE FIGHTING%' OR\n      UPPER(tc.name) LIKE '%PROFICIENCY IN SURVIVAL CRAFT%' OR\n      UPPER(tc.name) LIKE '%FAST RESCUE BOAT%' OR\n      UPPER(tc.name) LIKE '%SHIP SECURITY AWARENESS%' OR\n      UPPER(tc.name) LIKE '%SEAFARERS WITH DESIGNATED SECURITY DUTIES%' OR\n      UPPER(tc.name) LIKE '%SHIP SECURITY OFFICER%' OR\n      UPPER(tc.name) LIKE '%MECA%' OR\n      UPPER(tc.name) LIKE '%MEDICAL CARE%' OR\n      UPPER(tc.name) LIKE '%MEFA%' OR\n      UPPER(tc.name) LIKE '%MEDICAL FIRST AID%'\n    )\n    AND (\n      YEAR(t.issue_date) >= 2025\n      OR t.expiry_date >= CURDATE()\n      OR t.expiry_date = '0000-00-00'\n      OR t.expiry_date IS NULL\n    )\n    AND t.id = (\n      SELECT MAX(t2.id)\n      FROM training t2\n      WHERE t2.doc_file = t.doc_file\n        AND t2.applicant_id = @applicant_id\n        AND t2.archive = 0\n    )\n    \n  UNION ALL\n  \n  -- LICENSE DOCUMENTS\n  SELECT \n    'licenses' as source_table,\n    'Licenses' as category,\n    al.applicant_id,\n    l.name as document_name,\n    al.issue_date,\n    al.expiry_date,\n    al.doc_file,\n    CONCAT('https://adamson-bucket-name.s3-us-west-2.amazonaws.com/attachments/licenses/', al.applicant_id, '/', al.doc_file) AS attachment_link,\n    al.id as doc_record_id,\n    CASE \n      WHEN al.expiry_date IS NULL OR al.expiry_date = '0000-00-00' THEN 'No Expiry'\n      WHEN al.expiry_date < CURDATE() THEN 'Expired'\n      WHEN al.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY) THEN 'Expiring'\n      ELSE 'Valid'\n    END as status,\n    'License' as doc_type,\n    al.issued_by\n  FROM applicant_licenses al\n  LEFT JOIN licenses l ON al.license_id = l.id\n  WHERE al.applicant_id = @applicant_id \n    AND al.archive = 0\n    AND al.doc_file IS NOT NULL\n    AND al.doc_file != ''\n    AND (\n      YEAR(al.issue_date) >= 2025\n      OR al.expiry_date >= CURDATE()\n      OR al.expiry_date = '0000-00-00'\n      OR al.expiry_date IS NULL\n    )\n    AND al.id = (\n      SELECT MAX(al2.id)\n      FROM applicant_licenses al2\n      WHERE al2.doc_file = al.doc_file\n        AND al2.applicant_id = @applicant_id\n        AND al2.archive = 0\n    )\n    \n  UNION ALL\n  \n  -- GENERAL DOCUMENTS (EXCLUDE VACCINES)\n  SELECT \n    'documents' as source_table,\n    'Documents' as category,\n    ad.applicant_id,\n    d.name as document_name,\n    ad.issue_date,\n    ad.expiry_date,\n    ad.doc_file,\n    CONCAT('https://adamson-bucket-name.s3-us-west-2.amazonaws.com/attachments/documents/', ad.applicant_id, '/', ad.doc_file) AS attachment_link,\n    ad.id as doc_record_id,\n    CASE \n      WHEN ad.expiry_date IS NULL OR ad.expiry_date = '0000-00-00' THEN 'No Expiry'\n      WHEN ad.expiry_date < CURDATE() THEN 'Expired'\n      WHEN ad.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY) THEN 'Expiring'\n      ELSE 'Valid'\n    END as status,\n    'Document' as doc_type,\n    ad.issued_by\n  FROM applicant_documents ad\n  LEFT JOIN documents d ON ad.doc_id = d.id\n  WHERE ad.applicant_id = @applicant_id \n    AND ad.archive = 0\n    AND UPPER(d.name) NOT LIKE '%VACCINE%'\n    AND ad.doc_file IS NOT NULL\n    AND ad.doc_file != ''\n    AND (\n      YEAR(ad.issue_date) >= 2025\n      OR ad.expiry_date >= CURDATE()\n      OR ad.expiry_date = '0000-00-00'\n      OR ad.expiry_date IS NULL\n    )\n    AND ad.id = (\n      SELECT MAX(ad2.id)\n      FROM applicant_documents ad2\n      WHERE ad2.doc_file = ad.doc_file\n        AND ad2.applicant_id = @applicant_id\n        AND ad2.archive = 0\n    )\n    \n  UNION ALL\n  \n  -- VACCINE DOCUMENTS\n  SELECT \n    'vaccines' as source_table,\n    'Vaccines' as category,\n    av.applicant_id,\n    v.name as document_name,\n    av.issue_date,\n    av.expiry_date,\n    av.doc_file,\n    CONCAT('https://adamson-bucket-name.s3-us-west-2.amazonaws.com/attachments/vaccines/', av.applicant_id, '/', av.doc_file) AS attachment_link,\n    av.id as doc_record_id,\n    CASE \n      WHEN av.expiry_date IS NULL OR av.expiry_date = '0000-00-00' THEN 'No Expiry'\n      WHEN av.expiry_date < CURDATE() THEN 'Expired'\n      WHEN av.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY) THEN 'Expiring'\n      ELSE 'Valid'\n    END as status,\n    'Vaccine' as doc_type,\n    clinic.name as issued_by\n  FROM applicant_vaccines av\n  LEFT JOIN vaccines v ON av.vaccine_id = v.id\n  LEFT JOIN clinics clinic ON av.clinic_id = clinic.clinic_id\n  WHERE av.applicant_id = @applicant_id \n    AND av.archive = 0\n    AND av.doc_file IS NOT NULL\n    AND av.doc_file != ''\n    AND (\n      YEAR(av.issue_date) >= 2025\n      OR av.expiry_date >= CURDATE()\n      OR av.expiry_date = '0000-00-00'\n      OR av.expiry_date IS NULL\n    )\n    AND av.id = (\n      SELECT MAX(av2.id)\n      FROM applicant_vaccines av2\n      WHERE av2.doc_file = av.doc_file\n        AND av2.applicant_id = @applicant_id\n        AND av2.archive = 0\n    )\n\n  UNION ALL\n\n  -- VISA DOCUMENTS\n  SELECT \n    'visas' as source_table,\n    'Visas' as category,\n    vis.applicant_id,\n    v.name as document_name,\n    vis.issue_date,\n    vis.expiry_date,\n    vis.doc_file,\n    CONCAT('https://adamson-bucket-name.s3-us-west-2.amazonaws.com/attachments/visas/', vis.applicant_id, '/', vis.doc_file) AS attachment_link,\n    vis.id as doc_record_id,\n    CASE \n      WHEN vis.expiry_date IS NULL OR vis.expiry_date = '0000-00-00' THEN 'No Expiry'\n      WHEN vis.expiry_date < CURDATE() THEN 'Expired'\n      WHEN vis.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY) THEN 'Expiring'\n      ELSE 'Valid'\n    END as status,\n    'Visa' as doc_type,\n    vis.issued_by\n  FROM applicant_visas vis\n  LEFT JOIN visas v ON vis.visa_id = v.id\n  WHERE vis.applicant_id = @applicant_id \n    AND COALESCE(vis.archive, 0) = 0\n    AND vis.doc_file IS NOT NULL\n    AND vis.doc_file != ''\n    AND (\n      YEAR(vis.issue_date) >= 2025\n      OR vis.expiry_date >= CURDATE()\n      OR vis.expiry_date = '0000-00-00'\n      OR vis.expiry_date IS NULL\n    )\n    AND vis.id = (\n      SELECT MAX(vis2.id)\n      FROM applicant_visas vis2\n      WHERE vis2.doc_file = vis.doc_file\n        AND vis2.applicant_id = @applicant_id\n        AND COALESCE(vis2.archive, 0) = 0\n    )\n\n  UNION ALL\n\n  -- FLAG ENDORSEMENT DOCUMENTS\n  SELECT \n    'flag_endorsements' as source_table,\n    'Flag Endorsements' as category,\n    afe.applicant_id,\n    CONCAT(COALESCE(c.name, 'Unknown'), ' Flag Endorsement') as document_name,\n    afe.issue_date,\n    afe.expiry_date,\n    afe.doc_file,\n    CONCAT('https://adamson-bucket-name.s3-us-west-2.amazonaws.com/attachments/flags/', afe.applicant_id, '/', afe.doc_file) AS attachment_link,\n    afe.id as doc_record_id,\n    CASE \n      WHEN afe.expiry_date IS NULL OR afe.expiry_date = '0000-00-00' THEN 'No Expiry'\n      WHEN afe.expiry_date < CURDATE() THEN 'Expired'\n      WHEN afe.expiry_date <= DATE_ADD(CURDATE(), INTERVAL 90 DAY) THEN 'Expiring'\n      ELSE 'Valid'\n    END as status,\n    'Flag Endorsement' as doc_type,\n    afe.issued_by\n  FROM applicant_flag_endorsements afe\n  LEFT JOIN flag_endorsements fe ON afe.flag_endorsement_id = fe.id\n  LEFT JOIN country c ON fe.country_id = c.country_id\n  WHERE afe.applicant_id = @applicant_id \n    AND afe.archive = 0\n    AND afe.doc_file IS NOT NULL\n    AND afe.doc_file != ''\n    AND (\n      YEAR(afe.issue_date) >= 2025\n      OR afe.expiry_date >= CURDATE()\n      OR afe.expiry_date = '0000-00-00'\n      OR afe.expiry_date IS NULL\n    )\n    AND afe.id = (\n      SELECT MAX(afe2.id)\n      FROM applicant_flag_endorsements afe2\n      WHERE afe2.doc_file = afe.doc_file\n        AND afe2.applicant_id = @applicant_id\n        AND afe2.archive = 0\n    )\n) AS all_sendable_documents\nORDER BY category, document_name",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        224,
+        144
+      ],
+      "id": "83258328-f0a8-4f9e-9c7f-926e2c306f79",
+      "name": "Query All Documents",
+      "credentials": {
+        "mySql": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "IRIS_Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get workflow input parameters\nconst workflowInput = $('When Executed by Another Workflow').first().json;\nconst allDocuments = $('Query All Documents').all().map(item => item.json);\nconst documentSelection = (workflowInput.document_selection || '').trim();\nconst recipientEmail = workflowInput.recipient_email;\nconst applicantName = workflowInput.applicant_name;\nconst applicantId = workflowInput.applicant_id;\n\n// ==============================================================================\n// ENHANCED EMAIL DOMAIN VALIDATION\n// ==============================================================================\nconst allowedDomains = [\n  'adamsonphil.com',\n  'iol.ph',\n  'duck.com',\n  'tidal-solutions.com'\n];\n\n// Sanitize and validate recipient email\nconst sanitizedEmail = (recipientEmail || '').trim().toLowerCase();\n\n// Check for empty email\nif (!sanitizedEmail) {\n  throw new Error(\n    `🚫 EMAIL REQUIRED\\n\\n` +\n    `No email address was provided.\\n\\n` +\n    `Please provide a valid email address to send documents.`\n  );\n}\n\n// Enhanced email format validation\nconst emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$/;\nif (!emailRegex.test(sanitizedEmail)) {\n  throw new Error(\n    `🚫 INVALID EMAIL FORMAT\\n\\n` +\n    `The provided email \"${recipientEmail}\" is not a valid email address.\\n\\n` +\n    `Please provide a valid email in the format: user@domain.com`\n  );\n}\n\n// Extract domain with additional validation\nif (!sanitizedEmail.includes('@')) {\n  throw new Error(\n    `🚫 INVALID EMAIL FORMAT\\n\\n` +\n    `The provided email \"${recipientEmail}\" does not contain an @ symbol.\\n\\n` +\n    `Please provide a valid email in the format: user@domain.com`\n  );\n}\n\nconst emailParts = sanitizedEmail.split('@');\nif (emailParts.length !== 2 || !emailParts[0] || !emailParts[1]) {\n  throw new Error(\n    `🚫 INVALID EMAIL FORMAT\\n\\n` +\n    `Could not parse email domain from \"${recipientEmail}\".\\n\\n` +\n    `Please provide a valid email address.`\n  );\n}\n\nconst emailDomain = emailParts[1];\n\n// Check if domain is in allowed list\nconst isAuthorizedDomain = allowedDomains.includes(emailDomain);\n\nif (!isAuthorizedDomain) {\n  throw new Error(\n    `🚫 SECURITY RESTRICTION\\n\\n` +\n    `Documents can only be sent to authorized email domains.\\n\\n` +\n    `Attempted: ${recipientEmail}\\n` +\n    `Domain extracted: ${emailDomain}\\n` +\n    `Allowed domains: @${allowedDomains.join(', @')}\\n\\n` +\n    `Please use an authorized email address or contact your administrator.`\n  );\n}\n\nconsole.log('✓ Email validated:', sanitizedEmail);\nconsole.log('✓ Domain validated:', emailDomain);\n\n\n// ==============================================================================\n// PHASE 2C: DOCUMENT FILTERING (UPDATED - Include all document types)\n// ==============================================================================\nconst sendableDocuments = allDocuments.filter(doc => {\n  // Only filter out documents without valid doc_files\n  return doc.doc_file && doc.doc_file.trim() !== '';\n});\n\nconst documentsWithoutFiles = allDocuments.length - sendableDocuments.length;\n\nconsole.log('Total documents found:', allDocuments.length);\nconsole.log('Documents without files excluded:', documentsWithoutFiles);\nconsole.log('Sendable documents:', sendableDocuments.length);\n\n// ==============================================================================\n// DOCUMENT SELECTION LOGIC (STRICT)\n// ==============================================================================\nlet selectedDocs = [];\n\n// ---- STRICT selection handling ----\nconst rawSel = (documentSelection ?? '').toString().trim();\nconst hasSel = rawSel.length > 0;\n\nif (hasSel && rawSel.toLowerCase() === 'all') {\n  // Send all documents that are sendable\n  selectedDocs = sendableDocuments.slice();\n} else if (!hasSel) {\n  // Empty selection → error (do not default to ALL)\n  throw new Error('No document selection provided. Please specify \"all\", a category (documents/licenses/vaccines/medicals), or one or more record IDs.');\n} else {\n  // Parse selection: categories and/or record IDs only\n  const tokens = rawSel.split(',').map(t => t.trim()).filter(Boolean);\n\n  const CATEGORY_ALIASES = {\n    documents: new Set(['documents','document','docs']),\n    licenses:  new Set(['licenses','license','licences']),\n    trainings: new Set(['trainings','training','train','courses','course']),\n    vaccines:  new Set(['vaccines','vaccine','shots','immunization','immunizations']),\n    visas:     new Set(['visas','visa']),\n    flags:     new Set(['flags','flag','endorsements','endorsement','flag_endorsements','flag_endorsement']),\n    medicals:  new Set(['medicals','medical','med','meds','medical_certificates'])\n  };\n\n  // Helper: detect a doc's coarse type\n  const docTypeOf = d => (d.category || d.doc_type || d.type || '').toLowerCase();\n\n  const wantedIds = new Set();\n  const wantedCategories = new Set();\n  const unknownTokens = [];\n\n  for (const t of tokens) {\n    const tl = t.toLowerCase();\n\n    if ([...CATEGORY_ALIASES.documents].includes(tl))  { wantedCategories.add('documents');  continue; }\n    if ([...CATEGORY_ALIASES.licenses].includes(tl))   { wantedCategories.add('licenses');   continue; }\n    if ([...CATEGORY_ALIASES.trainings].includes(tl))  { wantedCategories.add('trainings');  continue; }\n    if ([...CATEGORY_ALIASES.vaccines].includes(tl))   { wantedCategories.add('vaccines');   continue; }\n    if ([...CATEGORY_ALIASES.visas].includes(tl))      { wantedCategories.add('visas');      continue; }\n    if ([...CATEGORY_ALIASES.flags].includes(tl))      { wantedCategories.add('flags');      continue; }\n    if ([...CATEGORY_ALIASES.medicals].includes(tl))   { wantedCategories.add('medicals');   continue; }\n\n    // Treat everything else as a record_id (string compare)\n    const match = sendableDocuments.find(d => String(d.record_id) === t);\n    if (match) wantedIds.add(String(match.record_id));\n    else unknownTokens.push(t);\n  }\n\n  if (wantedIds.size === 0 && wantedCategories.size > 0) {\n    // Category-only selection\n    selectedDocs = sendableDocuments.filter(d => {\n      const t = docTypeOf(d);\n      if (wantedCategories.has('vaccines') && t.includes('vaccine')) return true;\n      if (wantedCategories.has('licenses') && t.includes('license')) return true;\n      if (wantedCategories.has('trainings') && t.includes('training')) return true;\n      if (wantedCategories.has('visas') && t.includes('visa')) return true;\n      if (wantedCategories.has('flags') && (t.includes('flag') || t.includes('endorsement'))) return true;\n      if (wantedCategories.has('medicals') && t.includes('medical')) return true;\n      if (wantedCategories.has('documents')) {\n        // Treat \"documents\" as general documents (not medical, vaccine, license, training, visa, or flag)\n        if (t.includes('vaccine')) return false;\n        if (t.includes('license')) return false;\n        if (t.includes('training')) return false;\n        if (t.includes('visa')) return false;\n        if (t.includes('flag')) return false;\n        if (t.includes('endorsement')) return false;\n        if (t.includes('medical')) return false;\n        return true;\n      }\n      return false;\n    });\n  } else {\n    // ID selection (exactly those IDs)\n    selectedDocs = sendableDocuments.filter(d => wantedIds.has(String(d.record_id)));\n  }\n\n  if (!selectedDocs || selectedDocs.length === 0) {\n    const extra = unknownTokens.length ? ` Unknown/invalid: ${unknownTokens.join(', ')}.` : '';\n    throw new Error('No matching documents found for the given selection.' + extra);\n  }\n\n  if (unknownTokens.length) {\n    $json.selection_warnings = `Ignored unknown selection items: ${unknownTokens.join(', ')}`;\n  }\n}\n// ---- END STRICT handling ----\n\nconsole.log('Documents before deduplication:', selectedDocs.length);\n\n// ✅ PHASE 2D: NO DEDUPLICATION NEEDED\n// SQL already deduplicated using MAX(id) - just log count\nconsole.log('Documents after selection (no dedup needed):', selectedDocs.length);\n\n\n// ==============================================================================\n// RETURN RESULTS WITH SECURITY NOTES\n// ==============================================================================\nif (selectedDocs.length === 0) {\n  throw new Error(\n    `No documents matched your selection: \"${documentSelection}\"\\n\\n` +\n    `Available: ${sendableDocuments.length} documents\\n` +\n    (documentsWithoutFiles > 0 ? `Note: ${documentsWithoutFiles} document(s) excluded (no file attached)\\n` : '') +\n    `\\nPlease check your document selection and try again.`\n  );\n}\n\nreturn selectedDocs.map(doc => ({\n  json: {\n    ...doc,\n    recipient_email: recipientEmail,\n    applicant_name: applicantName,\n    applicant_id: applicantId,\n    total_matched: selectedDocs.length,\n    documents_without_files: documentsWithoutFiles,\n    email_domain_validated: true\n  }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        144
+      ],
+      "id": "146c3654-6756-4609-963b-a1821505383d",
+      "name": "Match Documents"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9b1c5b9b-2438-4e53-916f-a290759b0647",
+              "leftValue": "={{ $json.total_matched }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        144
+      ],
+      "id": "c446fcd0-c83d-4290-a4b8-4295c05b0d1a",
+      "name": "Check If Documents Found"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\n// Determine how to display document count\nlet documentsFoundText;\nif (data.is_category_request) {\n  // Category request: \"3 medical documents\"\n  documentsFoundText = `<span class=\"stats-highlight\">${data.total_matched || 0} document${data.total_matched !== 1 ? 's' : ''}</span>`;\n} else if (data.total_requested) {\n  // Specific documents: \"2 of 3 documents\"\n  documentsFoundText = `<span class=\"stats-highlight\">${data.total_matched || 0} of ${data.total_requested}</span>`;\n} else {\n  // Fallback\n  documentsFoundText = `<span class=\"stats-highlight\">${data.total_matched || 0} document${data.total_matched !== 1 ? 's' : ''}</span>`;\n}\n\n// ✅ Format the requested documents list nicely\nlet requestedText;\nif (data.matched_documents && data.matched_documents.length > 0) {\n  // Show actual document names\n  const docNames = data.matched_documents.map(doc => doc.document_name);\n  \n  if (docNames.length <= 3) {\n    // If 3 or fewer, show all names\n    requestedText = docNames.join(', ');\n  } else {\n    // If more than 3, show first 3 and \"+ X more\"\n    const firstThree = docNames.slice(0, 3).join(', ');\n    const remaining = docNames.length - 3;\n    requestedText = `${firstThree}, <em>+${remaining} more</em>`;\n  }\n} else {\n  // Fallback to original request if no matched documents\n  requestedText = data.original_request || 'N/A';\n}\n\n// Generate professional HTML email with BOLD ENHANCEMENTS\nconst htmlEmail = `\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <style>\n    * { margin: 0; padding: 0; box-sizing: border-box; }\n    body { \n      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;\n      line-height: 1.6;\n      color: #333;\n      background-color: #f4f4f4;\n    }\n    .email-container {\n      max-width: 800px;\n      margin: 20px auto;\n      background-color: #ffffff;\n      border-radius: 8px;\n      overflow: hidden;\n      box-shadow: 0 2px 8px rgba(0,0,0,0.1);\n    }\n    .header {\n      background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);\n      color: #ffffff;\n      padding: 30px;\n      text-align: center;\n    }\n    .header h1 {\n      font-size: 24px;\n      font-weight: 600;\n      margin-bottom: 8px;\n    }\n    .header p {\n      font-size: 14px;\n      opacity: 0.9;\n    }\n    .content {\n      padding: 30px;\n    }\n    .info-grid {\n      display: table;\n      width: 100%;\n      background-color: #f8f9fa;\n      border-radius: 6px;\n      padding: 20px;\n      margin-bottom: 30px;\n      border-left: 4px solid #2a5298;\n    }\n    .info-row {\n      display: table-row;\n    }\n    .info-label {\n      display: table-cell;\n      font-weight: 600;\n      color: #555;\n      padding: 8px 15px 8px 0;\n      width: 140px;\n      vertical-align: top;\n    }\n    .info-value {\n      display: table-cell;\n      color: #333;\n      padding: 8px 0;\n      vertical-align: top;\n    }\n    .section-title {\n      font-size: 18px;\n      font-weight: 600;\n      color: #1e3c72;\n      margin-bottom: 20px;\n      padding-bottom: 10px;\n      border-bottom: 2px solid #e9ecef;\n    }\n    .documents-table {\n      width: 100%;\n      border-collapse: separate;\n      border-spacing: 0;\n      margin-bottom: 30px;\n      border: 1px solid #e0e0e0;\n      border-radius: 6px;\n      overflow: hidden;\n    }\n    .documents-table thead {\n      background-color: #f8f9fa;\n    }\n    .documents-table th {\n      padding: 14px 12px;\n      text-align: left;\n      font-weight: 600;\n      font-size: 13px;\n      color: #555;\n      text-transform: uppercase;\n      letter-spacing: 0.5px;\n      border-bottom: 2px solid #e0e0e0;\n    }\n    .documents-table td {\n      padding: 14px 12px;\n      border-bottom: 1px solid #f0f0f0;\n      font-size: 14px;\n    }\n    .documents-table tbody tr:last-child td {\n      border-bottom: none;\n    }\n    .documents-table tbody tr:hover {\n      background-color: #f8f9fa;\n    }\n    .doc-name {\n      font-weight: 700;\n      color: #1e3c72;\n    }\n    .doc-type {\n      display: inline-block;\n      padding: 4px 10px;\n      border-radius: 4px;\n      font-size: 12px;\n      font-weight: 500;\n      background-color: #e3f2fd;\n      color: #1976d2;\n    }\n    \n    /* ✅ NEW: Enhanced expiry date styling classes */\n    .expiry-critical {\n      font-weight: bold;\n      color: #721c24;\n      font-size: 15px;\n    }\n    .expiry-warning {\n      font-weight: bold;\n      color: #856404;\n      font-size: 15px;\n    }\n    .expiry-valid {\n      font-weight: bold;\n      color: #155724;\n      font-size: 15px;\n    }\n    .expiry-none {\n      font-weight: 600;\n      color: #6c757d;\n      font-style: italic;\n    }\n    \n    .status-badge {\n      display: inline-block;\n      padding: 5px 12px;\n      border-radius: 4px;\n      font-size: 12px;\n      font-weight: 600;\n      text-transform: uppercase;\n      letter-spacing: 0.5px;\n    }\n    .status-valid { \n      background-color: #d4edda; \n      color: #155724;\n    }\n    .status-expiring { \n      background-color: #fff3cd; \n      color: #856404;\n    }\n    .status-expired { \n      background-color: #f8d7da; \n      color: #721c24;\n    }\n    .status-no-expiry { \n      background-color: #e2e3e5; \n      color: #383d41;\n    }\n    .download-btn {\n      display: inline-block;\n      padding: 8px 16px;\n      background-color: #2a5298;\n      color: #ffffff !important;\n      text-decoration: none;\n      border-radius: 4px;\n      font-size: 13px;\n      font-weight: 500;\n      transition: background-color 0.2s;\n    }\n    .download-btn:hover {\n      background-color: #1e3c72;\n    }\n    .download-btn.disabled {\n      background-color: #ccc;\n      cursor: not-allowed;\n      pointer-events: none;\n    }\n    .alert-box {\n      border-left: 4px solid #ffc107;\n      padding: 15px 20px;\n      border-radius: 4px;\n      margin-bottom: 30px;\n    }\n    .alert-box.warning {\n      background-color: #fff3cd;\n      border-color: #ffc107;\n    }\n    .alert-box.error {\n      background-color: #f8d7da;\n      border-color: #dc3545;\n    }\n    .alert-box.info {\n      background-color: #d1ecf1;\n      border-color: #17a2b8;\n    }\n    .alert-title {\n      font-weight: 600;\n      margin-bottom: 8px;\n    }\n    .alert-box.warning .alert-title {\n      color: #856404;\n    }\n    .alert-box.error .alert-title {\n      color: #721c24;\n    }\n    .alert-box.info .alert-title {\n      color: #0c5460;\n    }\n    .alert-list {\n      margin: 0;\n      padding-left: 20px;\n    }\n    .alert-box.warning .alert-list {\n      color: #856404;\n    }\n    .alert-box.error .alert-list {\n      color: #721c24;\n    }\n    .alert-list li {\n      margin: 4px 0;\n    }\n    .footer {\n      background-color: #f8f9fa;\n      padding: 20px 30px;\n      text-align: center;\n      font-size: 12px;\n      color: #6c757d;\n      border-top: 1px solid #e9ecef;\n    }\n    .stats-highlight {\n      display: inline-block;\n      background-color: #e3f2fd;\n      color: #1976d2;\n      padding: 2px 8px;\n      border-radius: 3px;\n      font-weight: 600;\n    }\n    .no-docs-message {\n      text-align: center;\n      padding: 40px 20px;\n      color: #6c757d;\n    }\n    .no-docs-message h3 {\n      color: #495057;\n      margin-bottom: 10px;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"email-container\">\n    <!-- Header -->\n    <div class=\"header\">\n      <h1>📄 Crew Document Request</h1>\n      <p>${data.applicant_name || 'N/A'}</p>\n    </div>\n\n    <!-- Content -->\n    <div class=\"content\">\n      <!-- Request Summary -->\n      <div class=\"info-grid\">\n        <div class=\"info-row\">\n          <div class=\"info-label\">Applicant ID:</div>\n          <div class=\"info-value\">${data.applicant_id || 'N/A'}</div>\n        </div>\n        <div class=\"info-row\">\n          <div class=\"info-label\">Requested:</div>\n          <div class=\"info-value\">${requestedText}</div>\n        </div>\n        <div class=\"info-row\">\n          <div class=\"info-label\">Documents Found:</div>\n          <div class=\"info-value\">${documentsFoundText}</div>\n        </div>\n        <div class=\"info-row\">\n          <div class=\"info-label\">Sent to:</div>\n          <div class=\"info-value\">${data.recipient_email || 'N/A'}</div>\n        </div>\n      </div>\n\n      ${data.total_matched > 0 ? `\n        <!-- Documents Table -->\n        <h2 class=\"section-title\">✓ Found Documents (${data.total_matched})</h2>\n        <table class=\"documents-table\">\n          <thead>\n            <tr>\n              <th>Document Name</th>\n              <th>Type</th>\n              <th>Issue Date</th>\n              <th style=\"font-weight: 700;\">Expiry Date</th>\n              <th>Status</th>\n              <th style=\"text-align: center;\">Action</th>\n            </tr>\n          </thead>\n          <tbody>\n            ${(data.matched_documents || []).map(doc => {\n              const status = doc.status || 'Unknown';\n              const statusClass = status.toLowerCase().replace(/\\s+/g, '-');\n              const downloadLink = doc.attachment_link || '#';\n              const hasValidLink = downloadLink !== '#';\n              \n              // ✅ NEW: Determine expiry date styling class based on status\n              let expiryClass = 'expiry-none';\n              let expiryIcon = '';\n              \n              if (status === 'Expired') {\n                expiryClass = 'expiry-critical';\n                expiryIcon = '⚠️ ';\n              } else if (status === 'Expiring') {\n                expiryClass = 'expiry-warning';\n                expiryIcon = '⏰ ';\n              } else if (status === 'Valid') {\n                expiryClass = 'expiry-valid';\n              } else if (status === 'No Expiry') {\n                expiryClass = 'expiry-none';\n              }\n              \n              // Format expiry date display\n              const expiryDisplay = doc.expiry_date === '0000-00-00' || !doc.expiry_date ? 'No Expiry' : doc.expiry_date;\n              \n              return `\n            <tr>\n              <td class=\"doc-name\">${doc.document_name || 'Unknown'}</td>\n              <td><span class=\"doc-type\">${doc.doc_type || 'Document'}</span></td>\n              <td>${doc.issue_date || 'N/A'}</td>\n              <td class=\"${expiryClass}\">${expiryIcon}${expiryDisplay}</td>\n              <td>\n                <span class=\"status-badge status-${statusClass}\">\n                  ${status}\n                </span>\n              </td>\n              <td style=\"text-align: center;\">\n                <a href=\"${downloadLink}\" class=\"download-btn ${!hasValidLink ? 'disabled' : ''}\" ${hasValidLink ? '' : 'title=\"File not available\"'}>\n                  ${hasValidLink ? '⬇️ Download' : '❌ Unavailable'}\n                </a>\n              </td>\n            </tr>\n            `;\n            }).join('')}\n          </tbody>\n        </table>\n      ` : `\n        <div class=\"no-docs-message\">\n          <h3>🔍 No Matching Documents Found</h3>\n          <p>The requested documents could not be found in the system.</p>\n        </div>\n      `}\n\n      <!-- Not Found Documents Alert (only for specific document requests) -->\n      ${(!data.is_category_request && data.not_found_documents && data.not_found_documents.length > 0) ? `\n      <div class=\"alert-box ${data.total_matched === 0 ? 'error' : 'warning'}\">\n        <div class=\"alert-title\">\n          ${data.total_matched === 0 ? '❌ Documents Not Found' : '⚠️ Some Documents Not Found'}\n        </div>\n        <p style=\"margin-bottom: 10px;\">The following requested documents were not found in the system:</p>\n        <ul class=\"alert-list\">\n          ${data.not_found_documents.map(doc => `<li><strong>${doc}</strong></li>`).join('')}\n        </ul>\n        ${data.available_doc_types && data.available_doc_types.length > 0 ? `\n          <p style=\"margin-top: 15px; font-style: italic;\">\n            Available document types for this crew member: ${data.available_doc_types.join(', ')}\n          </p>\n        ` : ''}\n      </div>\n      ` : ''}\n\n      <!-- Processing Info (if helpful) -->\n      ${data.note ? `\n      <div class=\"alert-box info\">\n        <div class=\"alert-title\">ℹ️ Note</div>\n        <p>${data.note}</p>\n      </div>\n      ` : ''}\n    </div>\n\n    <!-- Footer -->\n    <div class=\"footer\">\n      <p>🕐 Generated on ${new Date().toLocaleString('en-US', {\n        timeZone: 'Asia/Manila',\n        dateStyle: 'medium',\n        timeStyle: 'short'\n      })}</p>\n      <p style=\"margin-top: 8px;\">Adamson Philippines Inc. - IRIS Document System</p>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\n// Determine subject based on results\nlet subject;\nif (data.total_matched === 0) {\n  subject = `❌ Documents Not Found: ${data.applicant_name || 'Crew Member'}`;\n} else if (!data.is_category_request && data.not_found_documents && data.not_found_documents.length > 0) {\n  subject = `⚠️ Partial Results: ${data.applicant_name || 'Crew Member'} - ${data.total_matched} of ${data.total_requested} found`;\n} else {\n  subject = `✅ Document Request: ${data.applicant_name || 'Crew Member'} - ${data.total_matched} document${data.total_matched !== 1 ? 's' : ''}`;\n}\n\nreturn [{\n  json: {\n    html_body: htmlEmail,\n    subject: subject,\n    recipient_email: data.recipient_email,\n    // Pass through for final response\n    ...data\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        -144
+      ],
+      "id": "ed33965e-e4cf-46d3-ab0a-98d57145a3b2",
+      "name": "Generate Email HTML"
+    },
+    {
+      "parameters": {
+        "fromEmail": "go@iol.ph",
+        "toEmail": "={{ $json.recipient_email }}",
+        "subject": "={{ $json.subject }}",
+        "html": "={{ $json.html_body }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.mailjet",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        -144
+      ],
+      "id": "6441ab65-6b59-458a-ba3d-118878d4bee7",
+      "name": "Send an email",
+      "credentials": {
+        "mailjetEmailApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Mailjet Email account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst excl = j.medical_excluded_count || 0;\n\nconst tail = excl > 0\n  ? ` (${excl} medical document(s) were excluded by policy)`\n  : '';\n\nreturn [{\n  json: {\n    success: true,\n    message: `Successfully sent ${j.total_matched} document(s) to ${j.recipient_email}${tail}`,\n    matched_count: j.total_matched,\n    requested_count: j.total_requested,\n    not_found: j.not_found_documents,\n    medical_excluded_count: excl\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        -48
+      ],
+      "id": "5559ba24-09cf-4cb1-80f6-f8282163f580",
+      "name": "Return Success"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    success: false,\n    message: `No documents found matching: ${$input.first().json.original_request}`,\n    not_found: $input.first().json.not_found_documents,\n    applicant_id: $input.first().json.applicant_id\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        240
+      ],
+      "id": "1bdd6cd8-63e5-4aa5-bf37-8c351f1ac419",
+      "name": "Return Error"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect all matched documents from the input\nconst allDocuments = $input.all().map(item => item.json);\n\n// Get metadata from the first document (all have the same metadata)\nconst firstDoc = allDocuments[0];\n\n// Extract workflow parameters\nconst workflowInput = $('When Executed by Another Workflow').first().json;\n\n// NEW: Create a list of document names for logging\nconst documentNames = allDocuments.map(doc => doc.document_name).join(', ');\n\n// NEW: carry over excluded medical count (present on every item)\nconst medicalExcludedCount = firstDoc?.medical_excluded_count || 0;\n\n// Build aggregated data structure for email generation\nconst aggregatedData = {\n  // Metadata\n  applicant_id: firstDoc.applicant_id || workflowInput.applicant_id,\n  applicant_name: firstDoc.applicant_name || workflowInput.applicant_name,\n  recipient_email: firstDoc.recipient_email || workflowInput.recipient_email,\n  telegram_username: workflowInput.telegram_username || 'N/A',\n\n  // Document matching info\n  total_matched: firstDoc.total_matched || allDocuments.length,\n  matched_documents: allDocuments,\n  document_names: documentNames,\n\n  // Request info\n  original_request: workflowInput.document_selection || 'N/A',\n\n  // Additional flags/metrics\n  is_category_request: false,\n  total_requested: null,\n  not_found_documents: [],\n  available_doc_types: [],\n\n  // ✅ NEW: make the excluded count available downstream\n  medical_excluded_count: medicalExcludedCount\n};\n\nconsole.log('=== AGGREGATED DATA FOR EMAIL ===');\nconsole.log('Total documents:', aggregatedData.matched_documents.length);\nconsole.log('Applicant:', aggregatedData.applicant_name);\nconsole.log('Recipient:', aggregatedData.recipient_email);\nconsole.log('Telegram User:', aggregatedData.telegram_username);\nconsole.log('Document Names:', aggregatedData.document_names);\nconsole.log('Medical excluded count:', aggregatedData.medical_excluded_count);\n\nreturn { json: aggregatedData };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        48
+      ],
+      "id": "c0786043-02ee-4671-8e3e-8c9022ad0365",
+      "name": "Aggregate Documents"
+    },
+    {
+      "parameters": {
+        "fromEmail": "go@iol.ph",
+        "toEmail": "kevin@iol.ph",
+        "subject": "=🚨 IRIS Alert: {{ $json.total_matched }} Document(s) Sent to {{ $json.recipient_email }}",
+        "html": "=<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <style>\n    * { margin: 0; padding: 0; box-sizing: border-box; }\n    body { \n      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n      background-color: #f5f5f5;\n      padding: 20px;\n    }\n    .container {\n      max-width: 800px;\n      margin: 0 auto;\n      background: white;\n      border-radius: 8px;\n      overflow: hidden;\n      box-shadow: 0 4px 6px rgba(0,0,0,0.1);\n    }\n    .header {\n      background: linear-gradient(135deg, #d32f2f 0%, #c62828 100%);\n      color: white;\n      padding: 30px;\n      text-align: center;\n    }\n    .header h1 {\n      font-size: 24px;\n      font-weight: 600;\n      margin-bottom: 8px;\n    }\n    .alert-banner {\n      background: #fff3cd;\n      border-left: 5px solid #ffc107;\n      padding: 15px 20px;\n      margin: 0;\n    }\n    .alert-banner strong {\n      color: #856404;\n      font-size: 14px;\n    }\n    .content {\n      padding: 30px;\n    }\n    .section {\n      margin-bottom: 25px;\n      padding: 20px;\n      border-radius: 6px;\n      border-left: 4px solid;\n    }\n    .section.critical {\n      background: #f8d7da;\n      border-color: #dc3545;\n    }\n    .section.info {\n      background: #d1ecf1;\n      border-color: #17a2b8;\n    }\n    .section.warning {\n      background: #fff3cd;\n      border-color: #ffc107;\n    }\n    .section h3 {\n      margin-bottom: 15px;\n      font-size: 16px;\n      color: #333;\n    }\n    .info-row {\n      display: flex;\n      padding: 8px 0;\n      border-bottom: 1px solid rgba(0,0,0,0.05);\n    }\n    .info-row:last-child {\n      border-bottom: none;\n    }\n    .info-label {\n      font-weight: 600;\n      min-width: 180px;\n      color: #555;\n    }\n    .info-value {\n      color: #333;\n      flex: 1;\n    }\n    .docs-table {\n      width: 100%;\n      border-collapse: collapse;\n      margin-top: 15px;\n      font-size: 13px;\n    }\n    .docs-table th {\n      background: #f8f9fa;\n      padding: 12px 10px;\n      text-align: left;\n      font-weight: 600;\n      border-bottom: 2px solid #dee2e6;\n      color: #495057;\n    }\n    .docs-table td {\n      padding: 12px 10px;\n      border-bottom: 1px solid #e9ecef;\n    }\n    .docs-table tr:hover {\n      background: #f8f9fa;\n    }\n    .badge {\n      display: inline-block;\n      padding: 4px 10px;\n      border-radius: 4px;\n      font-size: 11px;\n      font-weight: 600;\n    }\n    .badge-license { background: #e3f2fd; color: #1976d2; }\n    .badge-document { background: #f3e5f5; color: #7b1fa2; }\n    .badge-training { background: #e8f5e9; color: #388e3c; }\n    .badge-medical { background: #fce4ec; color: #c2185b; }\n    .badge-visa { background: #fff3e0; color: #e65100; }\n    .status-valid { color: #155724; font-weight: bold; }\n    .status-expiring { color: #856404; font-weight: bold; }\n    .status-expired { color: #721c24; font-weight: bold; }\n    .footer {\n      background: #f8f9fa;\n      padding: 20px 30px;\n      text-align: center;\n      font-size: 12px;\n      color: #6c757d;\n      border-top: 1px solid #e9ecef;\n    }\n    .highlight {\n      background: #fff3cd;\n      padding: 2px 6px;\n      border-radius: 3px;\n      font-weight: 600;\n      color: #856404;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>🚨 IRIS Security Alert</h1>\n      <p>Document Access & Distribution Notification</p>\n    </div>\n\n    <div class=\"alert-banner\">\n      <strong>⚠️ CONFIDENTIAL DOCUMENTS SENT VIA EMAIL</strong>\n    </div>\n\n    <div class=\"content\">\n      <div class=\"section critical\">\n        <h3>📧 Email Distribution Details</h3>\n        <div class=\"info-row\">\n          <div class=\"info-label\">Recipient Email:</div>\n          <div class=\"info-value\"><strong>{{ $json.recipient_email }}</strong></div>\n        </div>\n        <div class=\"info-row\">\n          <div class=\"info-label\">Documents Sent:</div>\n          <div class=\"info-value\"><span class=\"highlight\">{{ $json.total_matched }} document(s)</span></div>\n        </div>\n        <div class=\"info-row\">\n          <div class=\"info-label\">Timestamp:</div>\n          <div class=\"info-value\">{{ $now.format('MMMM dd, yyyy - HH:mm:ss') }} (PHT)</div>\n        </div>\n      </div>\n\n      <div class=\"section info\">\n        <h3>👤 Crew Member Information</h3>\n        <div class=\"info-row\">\n          <div class=\"info-label\">Full Name:</div>\n          <div class=\"info-value\"><strong>{{ $json.applicant_name }}</strong></div>\n        </div>\n        <div class=\"info-row\">\n          <div class=\"info-label\">Applicant ID:</div>\n          <div class=\"info-value\">{{ $json.applicant_id }}</div>\n        </div>\n      </div>\n\n      <div class=\"section warning\">\n        <h3>📋 Documents Transmitted</h3>\n        <p style=\"margin-bottom: 15px; color: #856404;\">The following documents were sent to the recipient email address:</p>\n        <table class=\"docs-table\">\n          <thead>\n            <tr>\n              <th>Document Name</th>\n              <th>Category</th>\n              <th>Issue Date</th>\n              <th>Expiry Date</th>\n              <th>Status</th>\n            </tr>\n          </thead>\n          <tbody>\n            {{ $json.matched_documents.map(function(doc) { \n              var statusClass = doc.status === 'Valid' ? 'status-valid' : (doc.status === 'Expiring' ? 'status-expiring' : (doc.status === 'Expired' ? 'status-expired' : ''));\n              var expiryDisplay = doc.expiry_date === '0000-00-00' ? 'No Expiry' : doc.expiry_date;\n              var badgeClass = 'badge-' + doc.category;\n              \n              return '<tr><td><strong>' + doc.document_name + '</strong></td><td><span class=\"badge ' + badgeClass + '\">' + doc.category.toUpperCase() + '</span></td><td>' + doc.issue_date + '</td><td class=\"' + statusClass + '\">' + expiryDisplay + '</td><td>' + doc.status + '</td></tr>';\n            }).join('') }}\n          </tbody>\n        </table>\n      </div>\n\n      <div class=\"section info\" style=\"{{ $json.medical_excluded_count > 0 ? '' : 'display: none;' }}\">\n        <h3>🔒 Security Policy Applied</h3>\n        <div class=\"info-row\">\n          <div class=\"info-label\">Medical Documents:</div>\n          <div class=\"info-value\">{{ $json.matched_documents[0].medical_excluded_count || 0 }} medical document(s) were automatically excluded from sending per security policy</div>\n        </div>\n      </div>\n\n      <div class=\"section info\">\n        <h3>📋 Request Information</h3>\n        <div class=\"info-row\">\n          <div class=\"info-label\">Request Type:</div>\n          <div class=\"info-value\">{{ $json.is_category_request ? 'Category-based Request' : 'Specific Document Selection' }}</div>\n        </div>\n        <div class=\"info-row\">\n          <div class=\"info-label\">Original Request:</div>\n          <div class=\"info-value\">{{ $json.original_request }}</div>\n        </div>\n      </div>\n    </div>\n\n    <div class=\"footer\">\n      <p><strong>🤖 Automated Security Notification</strong></p>\n      <p style=\"margin-top: 8px;\">Adamson Philippines Inc. - IRIS Document Management System</p>\n      <p style=\"margin-top: 8px; color: #999;\">This alert is sent automatically when crew documents are transmitted via email.</p>\n    </div>\n  </div>\n</body>\n</html>\n",
+        "additionalFields": {
+          "ccAddresses": "jester@iol.ph"
+        }
+      },
+      "type": "n8n-nodes-base.mailjet",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        240
+      ],
+      "id": "78d17e77-0ee1-4e8b-8532-e070a1f61a46",
+      "name": "Send Access Alert",
+      "alwaysOutputData": true,
+      "credentials": {
+        "mailjetEmailApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Mailjet Email account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Your_Google_Sheet_Name",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 78554671,
+          "mode": "list",
+          "cachedResultName": "Access_Logs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1OoOyAtghGqQ5GxiUWbTTWiwesZyPDKTKxGbPsi5455Q/edit#gid=78554671"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $now.setZone('Asia/Manila').toFormat('yyyy-MM-dd HH:mm:ss') }}",
+            "Telegram_Username": "={{ $json.telegram_username }}",
+            "Crew_Member_ID": "={{ $json.applicant_id }}",
+            "Crew_Member_Name": "={{ $json.applicant_name }}",
+            "Documents_Requested": "={{ $json.total_matched }}",
+            "Recipient_Email": "={{ $json.recipient_email }}",
+            "Document_Names": "={{ $json.document_names }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Telegram_Username",
+              "displayName": "Telegram_Username",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Crew_Member_ID",
+              "displayName": "Crew_Member_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Crew_Member_Name",
+              "displayName": "Crew_Member_Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Documents_Requested",
+              "displayName": "Documents_Requested",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Document_Names",
+              "displayName": "Document_Names",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Recipient_Email",
+              "displayName": "Recipient_Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1344,
+        48
+      ],
+      "id": "fbb7331c-69f4-4799-a1eb-89386f99748a",
+      "name": "Update Access Logs",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Query All Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query All Documents": {
+      "main": [
+        [
+          {
+            "node": "Match Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match Documents": {
+      "main": [
+        [
+          {
+            "node": "Check If Documents Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Documents Found": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Documents",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Email HTML": {
+      "main": [
+        [
+          {
+            "node": "Send an email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send an email": {
+      "main": [
+        [
+          {
+            "node": "Return Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Documents": {
+      "main": [
+        [
+          {
+            "node": "Generate Email HTML",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Access Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update Access Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Access Alert": {
+      "main": [
+        [
+          {
+            "node": "Return Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Access Logs": {
+      "main": [
+        [
+          {
+            "node": "Return Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Manila",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "06551de9-ff3e-466a-80ee-529a8e1eca67",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "REPLACE_WITH_YOUR_INSTANCE_ID"
+  },
+  "id": "XhIOB50voyfXiVu0",
+  "tags": []
+}

@@ -1,73 +1,259 @@
-# IRIS Assistant - Docker Deployment
+# IRIS Assistant - n8n Docker Deployment
 
-AI-powered Telegram assistant for crew management.
+**Version 2.0.0** | AI-powered Telegram assistant for crew management
 
-## What You Need Before Starting
+## 🚀 What's New in v2.0
 
-- Docker installed on your computer
-- MySQL database access (already provided)
-- Telegram bot token (from @BotFather)
-- Mailjet email account
-- OpenAI API key
-- Google account
+- **Enhanced AI Integration** - Upgraded to Claude Sonnet 4 for improved natural language understanding
+- **Modular Workflow Architecture** - 6 specialized workflows for better maintainability
+- **Advanced Document Management** - Categorized document filtering and retrieval
+- **Professional Email Templates** - HTML-formatted email delivery via Mailjet
+- **Comprehensive Audit Logging** - Google Sheets integration for activity tracking
+- **Automated Weekly Reports** - Scheduled access reports for stakeholders
 
-## Installation Steps
+---
 
-### 1. Setup Environment
+## 📋 Features
 
-Copy the template file:
-- Make a copy of `.env.example`
-- Rename the copy to `.env`
-- Open `.env` and change the password for N8N_PASSWORD
+### Core Capabilities
+- **Natural Language Queries** - Ask questions about crew members in plain English
+- **Intelligent Crew Search** - Fuzzy name matching and ID-based lookups
+- **Document Retrieval** - Find and email crew documents by category:
+  - Personal Documents
+  - Licenses & Certificates
+  - Training Records
+  - Vaccination Records
+  - Visa Information
+  - Flag Endorsements
+  - Medical Records (view-only for privacy)
+- **Statistical Reports** - Generate crew lists and expiring document reports
+- **Email Delivery** - Professional HTML emails with document links
+- **Activity Tracking** - Comprehensive audit logging to Google Sheets
+- **Weekly Automation** - Automated access reports every Friday
 
-### 2. Start Docker
+### Security Features
+- Authorized Telegram user validation
+- Email domain whitelisting (adamsonphil.com, iol.ph, duck.com, tidal-solutions.com)
+- Read-only database access
+- Medical document privacy protection
+- Secure credential management
 
-Open Terminal (Mac) or Command Prompt (Windows) and type:
-cd Desktop/IRIS_Assistant_Docker
+---
+
+## 🛠 Prerequisites
+
+Before starting the installation, ensure you have:
+
+- **Docker** and **Docker Compose** installed on your system
+- **MySQL Database** access with the following:
+  - Host, port, database name
+  - Read-only user credentials
+  - Required tables: `personal`, `applicant_documents`, `applicant_licenses`, `training`, `medical`, `applicant_vaccines`, `applicant_visas`, `applicant_flag_endorsements`
+- **Telegram Bot Token** - Create a bot via [@BotFather](https://t.me/botfather)
+- **Anthropic API Key** - For Claude Sonnet 4 ([console.anthropic.com](https://console.anthropic.com))
+- **Mailjet Account** - For email delivery ([mailjet.com](https://www.mailjet.com))
+- **Google Account** - For Google Sheets OAuth integration
+
+---
+
+## 📦 Installation
+
+### Step 1: Setup Environment
+
+1. **Clone this repository**
+git clone https://github.com/Team-IOL/iris-assistant-docker.git
+cd iris-assistant-docker
+
+2. **Configure environment variables**
+- Copy `.env.example` to `.env`
+- Edit `.env` and set your `N8N_PASSWORD`
+```
+cp .env.example .env
+```
+Edit .env with your preferred text editor
+
+### Step 2: Start Docker Containers
+```
 docker-compose up -d
+```
+Wait approximately 30 seconds for n8n to fully initialize.
 
-Wait 30 seconds for it to start.
+### Step 3: Access n8n Interface
 
-### 3. Access n8n
+1. Open your browser and navigate to: [**http://localhost:5678**](http://localhost:5678)
+2. Login with:
+   - **Username:** `admin`
+   - **Password:** (the password you set in `.env`)
 
-Open your web browser and go to: http://localhost:5678
+### Step 4: Configure Credentials
 
-Login with:
-- Username: admin
-- Password: (whatever you set in .env file)
+Click **Settings** → **Credentials** → **Add Credential**
 
-### 4. Configure Credentials
+Add the following 5 credentials (detailed setup in `docs/CREDENTIAL_SETUP.md`):
 
-Click Settings (gear icon) > Credentials > Add Credential
+1. **MySQL** - Name it: `IRIS_Database`
+2. **Telegram API** - Name it: `Telegram_Bot`
+3. **Anthropic API** - Name it: `Anthropic_Claude`
+4. **Mailjet Email API** - Name it: `Mailjet_Email`
+5. **Google Sheets OAuth2 API** - Name it: `Google_Sheets`
 
-Add each of these 5 credentials:
-1. MySQL (name it: IRIS_Database)
-2. Telegram API (name it: Telegram_Bot)
-3. Mailjet Email API (name it: Mailjet Email account)
-4. OpenAI API (name it: OpenAi account)
-5. Google Sheets OAuth2 API (name it: Google Sheets account)
+### Step 5: Import Workflows
 
-See CREDENTIAL_SETUP.md for detailed instructions.
+Import the 6 workflow files in this **exact order**:
 
-### 5. Update Authorized Users
+1. `workflows/Find-Crew-Member-Tool.json`
+2. `workflows/Get-Crew-Details-Tool.json`
+3. `workflows/Find-Available-Documents.json`
+4. `workflows/Query-Crew-Lists-Tool.json`
+5. `workflows/IRIS-AI-Assistant.json` ⚠️ **Import this last**
+6. `workflows/Weekly-Access-Report.json`
 
-1. Open the "IRIS AI Assistant" workflow
-2. Find the "Authorization Check" node
-3. Update the user IDs with your team's Telegram IDs
-4. Save
+See `docs/WORKFLOW_IMPORT.md` for detailed import instructions.
 
-### 6. Activate
+### Step 6: Configure Authorized Users
 
-Click the "Active" toggle on the IRIS AI Assistant workflow.
+1. Open the **IRIS AI Assistant** workflow
+2. Find the **Authorization Check** node
+3. Update the authorized Telegram user IDs with your team's IDs
+4. Save the workflow
 
-Done! Send a message to your Telegram bot to test.
+### Step 7: Activate Workflows
 
-## Stopping
+1. Open **IRIS AI Assistant** workflow
+2. Click the **Active** toggle (top right)
+3. Optionally activate **Weekly Access Report** for automated reporting
+
+---
+
+## 🎯 Usage
+
+### Basic Commands
+
+Send messages to your Telegram bot:
+
+**Crew Search:**
+- "Find Juan dela Cruz"
+- "Search for crew member ID 12345"
+- "Who is John Smith?"
+
+**Document Requests:**
+- "Send me the documents for Maria Santos to maria@adamsonphil.com"
+- "Email Juan's licenses to hr@adamsonphil.com"
+- "Get training records for crew ID 12345"
+
+**Crew Lists & Reports:**
+- "Show me all deployed crew"
+- "List crew with documents expiring in 30 days"
+- "Send available crew list to hr@adamsonphil.com"
+
+---
+
+## 🔧 Management
+
+### Stop the System
+```
 docker-compose down
+```
 
-## Starting Again
+### Restart the System
+```
 docker-compose up -d
+```
 
-## Help
+### View Logs
+```
+docker-compose logs -f n8n
+```
 
-See the docs/ folder for detailed guides.
+### Backup Workflows
+Workflows are stored in the Docker volume. To backup:
+```
+docker-compose exec n8n n8n export:workflow --all --output=/tmp/workflows.json
+```
+
+---
+
+## 📁 Repository Structure
+```
+iris-assistant-docker/
+│
+├── .env.example # Environment configuration template
+├── .gitignore # Git ignore rules
+├── docker-compose.yml # Docker services configuration
+├── README.md # This file
+├── CHANGELOG.md # Version history
+│
+├── workflows/ # n8n workflow JSON files
+│ ├── README.md # Workflow documentation
+│ ├── IRIS-AI-Assistant.json # Main AI assistant workflow
+│ ├── Find-Crew-Member-Tool.json # Crew search tool
+│ ├── Get-Crew-Details-Tool.json # Data retrieval tool
+│ ├── Find-Available-Documents.json # Document manager
+│ ├── Query-Crew-Lists-Tool.json # Reporting tool
+│ └── Weekly-Access-Report.json # Automated reporting
+│
+└── docs/ # Documentation files
+├── WORKFLOW_IMPORT.md # Step-by-step import guide
+├── CREDENTIAL_SETUP.md # Credential configuration
+├── DEPLOYMENT.md # Production deployment guide
+└── TROUBLESHOOTING.md # Common issues and solutions
+```
+---
+
+## 🔐 Security Best Practices
+
+- Never commit `.env` file with actual credentials
+- Use read-only database credentials
+- Regularly rotate API keys
+- Limit Telegram bot access to authorized users only
+- Keep Docker images updated
+- Enable firewall rules for production deployments
+
+---
+
+## 📚 Documentation
+
+- **[Workflow Import Guide](docs/WORKFLOW_IMPORT.md)** - Step-by-step workflow import
+- **[Credential Setup](docs/CREDENTIAL_SETUP.md)** - Detailed credential configuration
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment instructions
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Changelog](CHANGELOG.md)** - Version history and updates
+
+---
+
+## 🆘 Support
+
+For issues or questions:
+1. Check the [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
+2. Review workflow logs in n8n interface
+3. Check Docker container logs: `docker-compose logs`
+
+---
+
+## 📝 License
+
+Copyright © 2025 Adamson Philippines / Team IOL
+
+---
+
+## 🏗 Tech Stack
+
+- **n8n** - Workflow automation platform
+- **Docker** - Containerization
+- **MySQL** - Database (read-only access)
+- **Claude Sonnet 4** - AI language model (Anthropic)
+- **Telegram Bot API** - Chat interface
+- **Mailjet** - Email delivery service
+- **Google Sheets** - Audit logging
+- **AWS S3** - Document storage
+
+---
+
+## 📈 Version History
+
+See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
+
+**Current Version:** 2.0.0 (November 2025)
+
+
+

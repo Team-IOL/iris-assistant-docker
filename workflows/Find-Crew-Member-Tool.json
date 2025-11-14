@@ -16,7 +16,7 @@
       ],
       "id": "985c47b8-5f8c-4566-bccb-eec09a954032",
       "name": "Webhook",
-      "webhookId": "5917d6db-6274-4005-8542-bade1b9b697d"
+      "webhookId": "REPLACE_WITH_GENERATED_WEBHOOK_ID"
     },
     {
       "parameters": {
@@ -59,7 +59,7 @@
       "name": "Search Crew",
       "credentials": {
         "mySql": {
-          "id": "ZTkr3Q1ezOlzmAfP",
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
           "name": "IRIS_Database"
         }
       }
@@ -97,7 +97,7 @@
   "versionId": "127e42e1-64d2-4957-b891-8843cbb477e3",
   "meta": {
     "templateCredsSetupCompleted": true,
-    "instanceId": "833ff8930db72d7a0f274bb3f9fe76a232d6d1601cfd2eda8ac6fefd1c585259"
+    "instanceId": "REPLACE_WITH_YOUR_INSTANCE_ID"
   },
   "id": "2Vz7EfOZUnwwS1ZA",
   "tags": []

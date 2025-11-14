@@ -180,7 +180,7 @@
       "name": "Query Disembarking Crew",
       "credentials": {
         "mySql": {
-          "id": "ZTkr3Q1ezOlzmAfP",
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
           "name": "IRIS_Database"
         }
       }
@@ -201,7 +201,7 @@
       "name": "Query Expired Documents",
       "credentials": {
         "mySql": {
-          "id": "ZTkr3Q1ezOlzmAfP",
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
           "name": "IRIS_Database"
         }
       }
@@ -222,7 +222,7 @@
       "name": "Query Crew by Status",
       "credentials": {
         "mySql": {
-          "id": "ZTkr3Q1ezOlzmAfP",
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
           "name": "IRIS_Database"
         }
       }
@@ -243,7 +243,7 @@
       "name": "Query Counts",
       "credentials": {
         "mySql": {
-          "id": "ZTkr3Q1ezOlzmAfP",
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
           "name": "IRIS_Database"
         }
       }
@@ -264,7 +264,7 @@
       "name": "Query Expiring Documents",
       "credentials": {
         "mySql": {
-          "id": "ZTkr3Q1ezOlzmAfP",
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
           "name": "IRIS_Database"
         }
       }
@@ -359,7 +359,7 @@
       "name": "Send Email Report",
       "credentials": {
         "mailjetEmailApi": {
-          "id": "WX1bgYZp5SSfb4nJ",
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
           "name": "Mailjet Email account"
         }
       }
@@ -663,7 +663,7 @@
   "versionId": "54180e1b-70a7-49ec-a9b9-24300fd1be13",
   "meta": {
     "templateCredsSetupCompleted": true,
-    "instanceId": "833ff8930db72d7a0f274bb3f9fe76a232d6d1601cfd2eda8ac6fefd1c585259"
+    "instanceId": "REPLACE_WITH_YOUR_INSTANCE_ID"
   },
   "id": "gWJgOmHMMROCZpxa",
   "tags": []

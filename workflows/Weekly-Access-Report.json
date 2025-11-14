@@ -1,0 +1,171 @@
+{
+  "name": "Weekly Access Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                5
+              ],
+              "triggerAtHour": 18
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "a9aa888a-3fe5-48c3-8415-dc6dc967d0fe",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Your_Google_Sheet_Name",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 78554671,
+          "mode": "list",
+          "cachedResultName": "Access_Logs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1OoOyAtghGqQ5GxiUWbTTWiwesZyPDKTKxGbPsi5455Q/edit#gid=78554671"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        224,
+        0
+      ],
+      "id": "8fbf4dee-dade-4265-8bb6-8525c9455460",
+      "name": "Read Access Logs",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get all access log records\nconst allRecords = $input.all().map(item => item.json);\n\n// Calculate date 7 days ago\nconst today = new Date();\nconst sevenDaysAgo = new Date(today);\nsevenDaysAgo.setDate(today.getDate() - 7);\n\n// Filter records from last 7 days\nconst weekRecords = allRecords.filter(record => {\n  if (!record.Timestamp) return false;\n  \n  const recordDate = new Date(record.Timestamp);\n  return recordDate >= sevenDaysAgo;\n});\n\nconsole.log(`Total records in sheet: ${allRecords.length}`);\nconsole.log(`Records from last 7 days: ${weekRecords.length}`);\n\n// If no data for the week, return empty report flag\nif (weekRecords.length === 0) {\n  return [{\n    json: {\n      has_data: false,\n      message: 'No access activity in the past 7 days',\n      date_range: {\n        start: sevenDaysAgo.toISOString().split('T')[0],\n        end: today.toISOString().split('T')[0]\n      }\n    }\n  }];\n}\n\n// Calculate statistics\nconst totalRequests = weekRecords.length;\nconst totalDocuments = weekRecords.reduce((sum, record) => {\n  // FIX: Use Documents_Requested instead of Documents_Count\n  return sum + (parseInt(record.Documents_Requested) || 0);\n}, 0);\n\n// Get unique users\nconst uniqueUsers = [...new Set(weekRecords.map(r => r.Telegram_Username))];\n\n// Get unique crew members accessed\nconst uniqueCrewMembers = [...new Set(weekRecords.map(r => r.Crew_Member_Name))];\n\n// Count requests per user\nconst userActivityMap = {};\nweekRecords.forEach(record => {\n  const user = record.Telegram_Username || 'Unknown';\n  if (!userActivityMap[user]) {\n    userActivityMap[user] = {\n      username: user,\n      request_count: 0,\n      documents_sent: 0\n    };\n  }\n  userActivityMap[user].request_count++;\n  // FIX: Use Documents_Requested\n  userActivityMap[user].documents_sent += (parseInt(record.Documents_Requested) || 0);\n});\n\n// Convert to array and sort by request count\nconst userActivity = Object.values(userActivityMap)\n  .sort((a, b) => b.request_count - a.request_count);\n\n// Count crew member access frequency\nconst crewAccessMap = {};\nweekRecords.forEach(record => {\n  const crewName = record.Crew_Member_Name || 'Unknown';\n  const crewId = record.Crew_Member_ID || 'N/A';\n  const key = `${crewId}|${crewName}`;\n  \n  if (!crewAccessMap[key]) {\n    crewAccessMap[key] = {\n      crew_id: crewId,\n      crew_name: crewName,\n      access_count: 0,\n      documents_sent: 0\n    };\n  }\n  crewAccessMap[key].access_count++;\n  // FIX: Use Documents_Requested\n  crewAccessMap[key].documents_sent += (parseInt(record.Documents_Requested) || 0);\n});\n\n// Convert to array and sort by access count\nconst crewAccess = Object.values(crewAccessMap)\n  .sort((a, b) => b.access_count - a.access_count)\n  .slice(0, 10); // Top 10 most accessed crew members\n\n// Calculate daily breakdown\nconst dailyBreakdown = {};\nweekRecords.forEach(record => {\n  const date = record.Timestamp.split(' ')[0]; // Get date part\n  if (!dailyBreakdown[date]) {\n    dailyBreakdown[date] = 0;\n  }\n  dailyBreakdown[date]++;\n});\n\n// Return aggregated statistics\nreturn [{\n  json: {\n    has_data: true,\n    date_range: {\n      start: sevenDaysAgo.toISOString().split('T')[0],\n      end: today.toISOString().split('T')[0]\n    },\n    summary: {\n      total_requests: totalRequests,\n      total_documents_sent: totalDocuments,\n      unique_users: uniqueUsers.length,\n      unique_crew_accessed: uniqueCrewMembers.length,\n      avg_documents_per_request: (totalDocuments / totalRequests).toFixed(2)\n    },\n    user_activity: userActivity,\n    crew_access: crewAccess,\n    daily_breakdown: dailyBreakdown,\n    raw_records: weekRecords\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "e43b4a61-b2d2-4ab0-a3f1-b0c77f918403",
+      "name": "Process Weekly Statistics"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\n// Check if there's data to report\nif (!data.has_data) {\n  return [{\n    json: {\n      subject: `IRIS Weekly Access Report - No Activity (${data.date_range.start} to ${data.date_range.end})`,\n      html: `\n        <!DOCTYPE html>\n        <html>\n        <head>\n          <style>\n            * { margin: 0; padding: 0; box-sizing: border-box; }\n            body { \n              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n              background-color: #f5f5f5;\n              padding: 20px;\n            }\n            .container {\n              max-width: 800px;\n              margin: 0 auto;\n              background: white;\n              border-radius: 8px;\n              overflow: hidden;\n              box-shadow: 0 4px 6px rgba(0,0,0,0.1);\n            }\n            .header {\n              background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);\n              color: white;\n              padding: 30px;\n              text-align: center;\n            }\n            .header h1 {\n              font-size: 24px;\n              font-weight: 600;\n              margin-bottom: 8px;\n            }\n            .content { padding: 30px; }\n            .section {\n              margin-bottom: 25px;\n              padding: 20px;\n              border-radius: 6px;\n              border-left: 4px solid;\n            }\n            .section.info {\n              background: #d1ecf1;\n              border-color: #17a2b8;\n            }\n            .footer {\n              background: #f8f9fa;\n              padding: 20px 30px;\n              text-align: center;\n              font-size: 12px;\n              color: #6c757d;\n              border-top: 1px solid #e9ecef;\n            }\n          </style>\n        </head>\n        <body>\n          <div class=\"container\">\n            <div class=\"header\">\n              <h1>📊 IRIS Weekly Access Report</h1>\n              <p>Report Period: ${data.date_range.start} to ${data.date_range.end}</p>\n            </div>\n            <div class=\"content\">\n              <div class=\"section info\">\n                <h3>ℹ️ No Activity</h3>\n                <p>There were no document access requests during this period.</p>\n              </div>\n            </div>\n            <div class=\"footer\">\n              <p><strong>🤖 Automated Weekly Report</strong></p>\n              <p style=\"margin-top: 8px;\">Adamson Philippines Inc. - IRIS Document Management System</p>\n            </div>\n          </div>\n        </body>\n        </html>\n      `,\n      recipients: 'kevin@iol.ph, jester@iol.ph'\n    }\n  }];\n}\n\n// Generate HTML report with data\nconst { summary, user_activity, crew_access, daily_breakdown, date_range } = data;\n\n// Generate user activity table rows\nconst userRows = user_activity.map((user, index) => `\n  <tr>\n    <td style=\"padding: 12px 10px; border-bottom: 1px solid #e9ecef;\">${index + 1}</td>\n    <td style=\"padding: 12px 10px; border-bottom: 1px solid #e9ecef;\"><strong>${user.username}</strong></td>\n    <td style=\"padding: 12px 10px; border-bottom: 1px solid #e9ecef; text-align: center;\">${user.request_count}</td>\n    <td style=\"padding: 12px 10px; border-bottom: 1px solid #e9ecef; text-align: center;\">${user.documents_sent}</td>\n  </tr>\n`).join('');\n\n// Generate crew access table rows (top 10)\nconst crewRows = crew_access.slice(0, 10).map((crew, index) => `\n  <tr>\n    <td style=\"padding: 12px 10px; border-bottom: 1px solid #e9ecef;\">${index + 1}</td>\n    <td style=\"padding: 12px 10px; border-bottom: 1px solid #e9ecef;\"><strong>${crew.crew_name}</strong></td>\n    <td style=\"padding: 12px 10px; border-bottom: 1px solid #e9ecef; text-align: center;\">${crew.crew_id}</td>\n    <td style=\"padding: 12px 10px; border-bottom: 1px solid #e9ecef; text-align: center;\">${crew.access_count}</td>\n    <td style=\"padding: 12px 10px; border-bottom: 1px solid #e9ecef; text-align: center;\">${crew.documents_sent}</td>\n  </tr>\n`).join('');\n\n// Generate daily breakdown\nconst dailyRows = Object.entries(daily_breakdown)\n  .sort((a, b) => a[0].localeCompare(b[0]))\n  .map(([date, count]) => `\n    <tr>\n      <td style=\"padding: 12px 10px; border-bottom: 1px solid #e9ecef;\"><strong>${date}</strong></td>\n      <td style=\"padding: 12px 10px; border-bottom: 1px solid #e9ecef; text-align: center;\">${count}</td>\n    </tr>\n  `).join('');\n\nconst htmlReport = `\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <style>\n    * { margin: 0; padding: 0; box-sizing: border-box; }\n    body { \n      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n      background-color: #f5f5f5;\n      padding: 20px;\n    }\n    .container {\n      max-width: 800px;\n      margin: 0 auto;\n      background: white;\n      border-radius: 8px;\n      overflow: hidden;\n      box-shadow: 0 4px 6px rgba(0,0,0,0.1);\n    }\n    .header {\n      background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);\n      color: white;\n      padding: 30px;\n      text-align: center;\n    }\n    .header h1 {\n      font-size: 24px;\n      font-weight: 600;\n      margin-bottom: 8px;\n    }\n    .content {\n      padding: 30px;\n    }\n    .section {\n      margin-bottom: 25px;\n      padding: 20px;\n      border-radius: 6px;\n      border-left: 4px solid;\n    }\n    .section.info {\n      background: #d1ecf1;\n      border-color: #17a2b8;\n    }\n    .section h3 {\n      margin-bottom: 15px;\n      font-size: 16px;\n      color: #333;\n    }\n    .info-row {\n      display: flex;\n      padding: 8px 0;\n      border-bottom: 1px solid rgba(0,0,0,0.05);\n    }\n    .info-row:last-child {\n      border-bottom: none;\n    }\n    .info-label {\n      font-weight: 600;\n      min-width: 180px;\n      color: #555;\n    }\n    .info-value {\n      color: #333;\n      flex: 1;\n    }\n    .docs-table {\n      width: 100%;\n      border-collapse: collapse;\n      margin-top: 15px;\n      font-size: 13px;\n    }\n    .docs-table th {\n      background: #f8f9fa;\n      padding: 12px 10px;\n      text-align: left;\n      font-weight: 600;\n      border-bottom: 2px solid #dee2e6;\n      color: #495057;\n    }\n    .docs-table td {\n      padding: 12px 10px;\n      border-bottom: 1px solid #e9ecef;\n    }\n    .docs-table tr:hover {\n      background: #f8f9fa;\n    }\n    .highlight {\n      background: #fff3cd;\n      padding: 2px 6px;\n      border-radius: 3px;\n      font-weight: 600;\n      color: #856404;\n    }\n    .footer {\n      background: #f8f9fa;\n      padding: 20px 30px;\n      text-align: center;\n      font-size: 12px;\n      color: #6c757d;\n      border-top: 1px solid #e9ecef;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>📊 IRIS Weekly Access Report</h1>\n      <p>Report Period: ${date_range.start} to ${date_range.end}</p>\n    </div>\n\n    <div class=\"content\">\n      <!-- Summary Section -->\n      <div class=\"section info\">\n        <h3>📈 Summary Statistics</h3>\n        <div class=\"info-row\">\n          <div class=\"info-label\">Total Requests:</div>\n          <div class=\"info-value\"><span class=\"highlight\">${summary.total_requests}</span></div>\n        </div>\n        <div class=\"info-row\">\n          <div class=\"info-label\">Documents Sent:</div>\n          <div class=\"info-value\"><span class=\"highlight\">${summary.total_documents_sent}</span></div>\n        </div>\n        <div class=\"info-row\">\n          <div class=\"info-label\">Active Users:</div>\n          <div class=\"info-value\">${summary.unique_users}</div>\n        </div>\n        <div class=\"info-row\">\n          <div class=\"info-label\">Crew Members Accessed:</div>\n          <div class=\"info-value\">${summary.unique_crew_accessed}</div>\n        </div>\n        <div class=\"info-row\">\n          <div class=\"info-label\">Avg Documents per Request:</div>\n          <div class=\"info-value\">${summary.avg_documents_per_request}</div>\n        </div>\n      </div>\n\n      <!-- User Activity -->\n      <div class=\"section info\">\n        <h3>👥 User Activity</h3>\n        <table class=\"docs-table\">\n          <thead>\n            <tr>\n              <th style=\"width: 50px;\">#</th>\n              <th>Telegram Username</th>\n              <th style=\"text-align: center; width: 120px;\">Requests</th>\n              <th style=\"text-align: center; width: 120px;\">Documents</th>\n            </tr>\n          </thead>\n          <tbody>\n            ${userRows}\n          </tbody>\n        </table>\n      </div>\n\n      <!-- Most Accessed Crew Members -->\n      <div class=\"section info\">\n        <h3>📁 Most Accessed Crew Members</h3>\n        <table class=\"docs-table\">\n          <thead>\n            <tr>\n              <th style=\"width: 50px;\">#</th>\n              <th>Crew Member Name</th>\n              <th style=\"text-align: center; width: 100px;\">ID</th>\n              <th style=\"text-align: center; width: 100px;\">Access Count</th>\n              <th style=\"text-align: center; width: 100px;\">Documents</th>\n            </tr>\n          </thead>\n          <tbody>\n            ${crewRows}\n          </tbody>\n        </table>\n      </div>\n\n      <!-- Daily Breakdown -->\n      <div class=\"section info\">\n        <h3>📅 Daily Activity Breakdown</h3>\n        <table class=\"docs-table\">\n          <thead>\n            <tr>\n              <th>Date</th>\n              <th style=\"text-align: center; width: 150px;\">Requests</th>\n            </tr>\n          </thead>\n          <tbody>\n            ${dailyRows}\n          </tbody>\n        </table>\n      </div>\n    </div>\n\n    <div class=\"footer\">\n      <p><strong>🤖 Automated Weekly Report</strong></p>\n      <p style=\"margin-top: 8px;\">Adamson Philippines Inc. - IRIS Document Management System</p>\n      <p style=\"margin-top: 8px; color: #999;\">Generated on ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila', dateStyle: 'full', timeStyle: 'short' })} PHT</p>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\nreturn [{\n  json: {\n    subject: `IRIS Weekly Access Report - ${summary.total_requests} Requests (${date_range.start} to ${date_range.end})`,\n    html: htmlReport,\n    recipients: 'kevin@iol.ph, jester@iol.ph'\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        0
+      ],
+      "id": "8fba6d8d-a82b-4e04-9574-9871c36d2b60",
+      "name": "Generate HTML Report"
+    },
+    {
+      "parameters": {
+        "fromEmail": "go@iol.ph",
+        "toEmail": "={{ $json.recipients }}",
+        "subject": "={{ $json.subject }}",
+        "html": "={{ $json.html }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.mailjet",
+      "typeVersion": 1,
+      "position": [
+        864,
+        0
+      ],
+      "id": "40896178-5776-41bf-a3e7-b52bb90a5f26",
+      "name": "Send an email",
+      "credentials": {
+        "mailjetEmailApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Mailjet Email account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Access Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Access Logs": {
+      "main": [
+        [
+          {
+            "node": "Process Weekly Statistics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Weekly Statistics": {
+      "main": [
+        [
+          {
+            "node": "Generate HTML Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate HTML Report": {
+      "main": [
+        [
+          {
+            "node": "Send an email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Manila",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "4b58e23e-a401-4794-b951-0c737cb4b905",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "REPLACE_WITH_YOUR_INSTANCE_ID"
+  },
+  "id": "rEB8WvQ3r3qiz68i",
+  "tags": []
+}
