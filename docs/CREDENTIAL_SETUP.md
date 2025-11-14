@@ -49,36 +49,40 @@ Before setting up credentials, obtain:
 ### Step 2: Configure Connection
 
 Enter the following details:
-```
 **Credential Name:**
+```
 IRIS_Database
 ```
 
 ⚠️ **Important:** Use this exact name!
 
-```
 **Host:**
+```
 your-mysql-host.example.com
 ```
 
 (Provided by client/database administrator)
-```
+
 **Database:**
+```
 iris_db
 ```
 
 (Or the actual database name containing crew data)
-```
+
 **User:**
+```
 readonly_user
 ```
 (Read-only database user - recommended for security)
-```
+
 **Password:**
+```
 your-secure-password
 ```
-```
+
 **Port:**
+```
 3306
 ```
 (Default MySQL port, unless different)
@@ -207,12 +211,14 @@ To configure authorized users, you need your Telegram user ID:
 ### Step 4: Configure
 
 **Credential Name:**
-```Anthropic_Claude
+```
+Anthropic_Claude
 ```
 ⚠️ **Important:** Use this exact name!
 
-```
+
 **API Key:**
+```
 sk-ant-api03-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 (Paste your actual Anthropic API key)
@@ -389,14 +395,14 @@ Google_Sheets
 ```
 ⚠️ **Important:** Use this exact name!
 
-```
 **Client ID:**
+```
 your-client-id.apps.googleusercontent.com
 ```
 (From Google Cloud Console)
 
-```
 **Client Secret:**
+```
 your-client-secret
 ```
 (From Google Cloud Console)
@@ -575,3 +581,4 @@ For credential issues:
 - Verify API key validity in respective dashboards
 - Review n8n credential documentation: https://docs.n8n.io/credentials/
 - Check Docker logs: `docker-compose logs n8n`
+
