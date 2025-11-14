@@ -1,0 +1,104 @@
+{
+  "name": "Find Crew Member Tool",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/tools/find_crew_member",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "985c47b8-5f8c-4566-bccb-eec09a954032",
+      "name": "Webhook",
+      "webhookId": "REPLACE_WITH_GENERATED_WEBHOOK_ID"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        448,
+        0
+      ],
+      "id": "b940df15-528d-40f3-aea9-71938460b171",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  p.applicant_id,\n  TRIM(CONCAT_WS(' ',\n    NULLIF(TRIM(p.fname), ''),\n    NULLIF(TRIM(p.mname), ''),\n    NULLIF(TRIM(p.lname), ''),\n    NULLIF(TRIM(p.suffix), '')\n  )) AS full_name,\n  p.fname,\n  p.mname,\n  p.lname,\n  p.suffix,\n  p.status,\n  p.email,\n  CASE \n    WHEN p.currentstate='I' THEN 'Inactive'\n    WHEN p.currentstate='A' THEN 'Active'\n    WHEN p.currentstate='RT' THEN 'Retired'\n    WHEN p.currentstate='NR' THEN 'Not-for-Rehire'\n    WHEN p.currentstate='DC' THEN 'Deceased'\n  END AS current_state,\n  pos1.name AS primary_position,\n  pos2.name AS secondary_position\nFROM personal p\nLEFT JOIN positions pos1 ON p.position_id1 = pos1.position_id\nLEFT JOIN positions pos2 ON p.position_id2 = pos2.position_id\nWHERE (\n  -- Match first word of search against first word of fname (handles compound first names)\n  -- AND match last word of search against lname\n  (\n    LOWER(TRIM(SUBSTRING_INDEX(p.fname, ' ', 1))) = LOWER(TRIM(SUBSTRING_INDEX(TRIM('{{ $json.body.name }}'), ' ', 1)))\n    AND LOWER(TRIM(p.lname)) = LOWER(TRIM(SUBSTRING_INDEX(TRIM('{{ $json.body.name }}'), ' ', -1)))\n  )\n  \n  -- Match first word of fname against first word of search\n  -- AND last word of search appears anywhere in lname\n  OR (\n    LOWER(TRIM(SUBSTRING_INDEX(p.fname, ' ', 1))) = LOWER(TRIM(SUBSTRING_INDEX(TRIM('{{ $json.body.name }}'), ' ', 1)))\n    AND LOWER(TRIM(p.lname)) LIKE CONCAT('%', LOWER(TRIM(SUBSTRING_INDEX(TRIM('{{ $json.body.name }}'), ' ', -1))), '%')\n  )\n  \n  -- Match full concatenated name with LIKE (handles any partial match)\n  OR LOWER(REPLACE(TRIM(CONCAT_WS(' ', p.fname, p.mname, p.lname, p.suffix)), '  ', ' ')) \n    LIKE LOWER(CONCAT('%', REPLACE(TRIM('{{ $json.body.name }}'), '  ', ' '), '%'))\n  \n  -- Match fname field containing search term (handles compound first names)\n  OR LOWER(TRIM(p.fname)) LIKE LOWER(CONCAT('%', TRIM('{{ $json.body.name }}'), '%'))\n  \n  -- Match lname field containing search term\n  OR LOWER(TRIM(p.lname)) LIKE LOWER(CONCAT('%', TRIM('{{ $json.body.name }}'), '%'))\n  \n  -- Match middle name field\n  OR LOWER(TRIM(p.mname)) LIKE LOWER(CONCAT('%', TRIM('{{ $json.body.name }}'), '%'))\n  \n  -- Word boundary matching using REGEXP (matches individual words)\n  OR LOWER(TRIM(CONCAT_WS(' ', p.fname, p.mname, p.lname, p.suffix))) \n    REGEXP CONCAT('[[:<:]]', LOWER(REPLACE(TRIM('{{ $json.body.name }}'), ' ', '[[:<:]]|[[:<:]]')), '[[:>:]]')\n)\nORDER BY \n  -- Priority 1: First word of fname + exact lname match\n  CASE \n    WHEN LOWER(TRIM(SUBSTRING_INDEX(p.fname, ' ', 1))) = LOWER(TRIM(SUBSTRING_INDEX(TRIM('{{ $json.body.name }}'), ' ', 1)))\n      AND LOWER(TRIM(p.lname)) = LOWER(TRIM(SUBSTRING_INDEX(TRIM('{{ $json.body.name }}'), ' ', -1))) THEN 1\n    -- Priority 2: Exact full name match\n    WHEN LOWER(REPLACE(TRIM(CONCAT_WS(' ', p.fname, p.mname, p.lname)), '  ', ' '))\n      = LOWER(REPLACE(TRIM('{{ $json.body.name }}'), '  ', ' ')) THEN 2\n    -- Priority 3: fname contains search term\n    WHEN LOWER(TRIM(p.fname)) LIKE LOWER(CONCAT(TRIM('{{ $json.body.name }}'), '%')) THEN 3\n    -- Priority 4: lname starts with search term\n    WHEN LOWER(TRIM(p.lname)) LIKE LOWER(CONCAT(TRIM('{{ $json.body.name }}'), '%')) THEN 4\n    -- Priority 5: Partial matches anywhere\n    ELSE 5\n  END,\n  full_name\nLIMIT 10\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "e75a02df-849c-4f39-96ae-a7e2f2c71612",
+      "name": "Search Crew",
+      "credentials": {
+        "mySql": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "IRIS_Database"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Search Crew",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Crew": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "127e42e1-64d2-4957-b891-8843cbb477e3",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "REPLACE_WITH_YOUR_INSTANCE_ID"
+  },
+  "id": "2Vz7EfOZUnwwS1ZA",
+  "tags": []
+}
