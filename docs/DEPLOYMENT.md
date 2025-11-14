@@ -237,34 +237,33 @@ sudo nano /etc/nginx/sites-available/iris-assistant
 server {
 listen 80;
 server_name iris.yourdomain.com;
-```
+
 # Redirect to HTTPS (will be configured after SSL)
-```
 return 301 https://$server_name$request_uri;
 }
 
 server {
 listen 443 ssl http2;
 server_name iris.yourdomain.com;
-```
+
 # SSL certificates (will be added by Certbot)
 # ssl_certificate /etc/letsencrypt/live/iris.yourdomain.com/fullchain.pem;
 # ssl_certificate_key /etc/letsencrypt/live/iris.yourdomain.com/privkey.pem;
 
 # SSL configuration
-```
+
 ssl_protocols TLSv1.2 TLSv1.3;
 ssl_ciphers HIGH:!aNULL:!MD5;
 ssl_prefer_server_ciphers on;
-```
+
 # Security headers
-```
+
 add_header X-Frame-Options "SAMEORIGIN" always;
 add_header X-Content-Type-Options "nosniff" always;
 add_header X-XSS-Protection "1; mode=block" always;
-```
+
 # Proxy to n8n
-```
+
 location / {
     proxy_pass http://localhost:5678;
     proxy_http_version 1.1;
@@ -280,9 +279,9 @@ location / {
     proxy_read_timeout 300s;
     proxy_connect_timeout 75s;
 }
-```
+
 # Webhook endpoint (important for Telegram)
-```
+
 location /webhook {
     proxy_pass http://localhost:5678/webhook;
     proxy_http_version 1.1;
@@ -294,9 +293,9 @@ location /webhook {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
 }
-```
+
 # Logging
-```
+
 access_log /var/log/nginx/iris-assistant-access.log;
 error_log /var/log/nginx/iris-assistant-error.log;
 }
@@ -396,16 +395,13 @@ Follow the [WORKFLOW_IMPORT.md](WORKFLOW_IMPORT.md) guide to import all workflow
 4. Example: `https://iris.yourdomain.com/webhook/iris-webhook`
 
 **8.2: Set Telegram webhook**
-
-Option A - Using curl:
 ```
+Option A - Using curl:
 curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook"
 -H "Content-Type: application/json"
 -d '{"url": "https://iris.yourdomain.com/webhook/iris-webhook"}'
-```
 
 Option B - Using browser:
-```
 https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://iris.yourdomain.com/webhook/iris-webhook
 ```
 
@@ -454,13 +450,11 @@ sudo ufw status
 ```
 Install monitoring tools
 sudo apt install htop -y
-```
+
 Check system resources
-```
 htop
-```
+
 Monitor Docker containers
-```
 docker stats
 ```
 
@@ -469,45 +463,36 @@ docker stats
 **Create backup script:**
 ```
 sudo nano /opt/iris-assistant/backup.sh
-```
 
 Add this script:
-```
 #!/bin/bash
 IRIS Assistant Backup Script
 BACKUP_DIR="/opt/iris-assistant/backups"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-```
+
 Create backup directory
-```
 mkdir -p $BACKUP_DIR
-```
+
 Backup workflows
-```
 docker exec iris-assistant_n8n_1 n8n export:workflow --all --output=/tmp/workflows_$TIMESTAMP.json
 docker cp iris-assistant_n8n_1:/tmp/workflows_$TIMESTAMP.json $BACKUP_DIR/
-```
+
 Backup credentials (encrypted)
-```
 docker exec iris-assistant_n8n_1 n8n export:credentials --all --output=/tmp/credentials_$TIMESTAMP.json
 docker cp iris-assistant_n8n_1:/tmp/credentials_$TIMESTAMP.json $BACKUP_DIR/
-```
-Backup environment file
-```
-cp /opt/iris-assistant/.env $BACKUP_DIR/env_$TIMESTAMP.backup
-```
-Compress backups
-```
-tar -czf $BACKUP_DIR/iris_backup_$TIMESTAMP.tar.gz -C $BACKUP_DIR workflows_$TIMESTAMP.json credentials_$TIMESTAMP.json env_$TIMESTAMP.backup
-```
-Remove individual files
-```
-rm $BACKUP_DIR/workflows_$TIMESTAMP.json $BACKUP_DIR/credentials_$TIMESTAMP.json $BACKUP_DIR/env_$TIMESTAMP.backup
-```
-Keep only last 7 days of backups
-```
-find $BACKUP_DIR -name "iris_backup_*.tar.gz" -mtime +7 -delete
 
+Backup environment file
+cp /opt/iris-assistant/.env $BACKUP_DIR/env_$TIMESTAMP.backup
+
+Compress backups
+tar -czf $BACKUP_DIR/iris_backup_$TIMESTAMP.tar.gz -C $BACKUP_DIR workflows_$TIMESTAMP.json credentials_$TIMESTAMP.json env_$TIMESTAMP.backup
+
+Remove individual files
+rm $BACKUP_DIR/workflows_$TIMESTAMP.json $BACKUP_DIR/credentials_$TIMESTAMP.json $BACKUP_DIR/env_$TIMESTAMP.backup
+
+Keep only last 7 days of backups
+
+find $BACKUP_DIR -name "iris_backup_*.tar.gz" -mtime +7 -delete
 echo "Backup completed: iris_backup_$TIMESTAMP.tar.gz"
 
 ```
@@ -522,9 +507,9 @@ chmod +x /opt/iris-assistant/backup.sh
 ```
 crontab -e
 ```
-
 Add this line:
-```0 2 * * * /opt/iris-assistant/backup.sh >> /opt/iris-assistant/backup.log 2>&1
+```
+0 2 * * * /opt/iris-assistant/backup.sh >> /opt/iris-assistant/backup.log 2>&1
 ```
 
 ---
@@ -558,16 +543,14 @@ Add this line:
 ### Performance Tests
 
 **Monitor resource usage:**
+```
 CPU and memory
-```
 docker stats
-```
+
 Disk usage
-```
 df -h
-```
+
 Network connections
-```
 netstat -tuln
 ```
 
@@ -602,26 +585,23 @@ Re-import updated workflows in n8n interface
 ```
 n8n application logs
 docker-compose logs -f n8n
-```
 
 Nginx access logs
-```
+
 sudo tail -f /var/log/nginx/iris-assistant-access.log
-```
+
 Nginx error logs
-```
+
 sudo tail -f /var/log/nginx/iris-assistant-error.log
 ```
 
 
 **Rotate logs:**
+```
 Configure logrotate
-```
 sudo nano /etc/logrotate.d/iris-assistant
-```
 
 Add:
-```
 /var/log/nginx/iris-assistant-*.log {
 daily
 rotate 14
