@@ -141,5 +141,3 @@ For issues with workflow import or configuration, refer to:
 - `../docs/CREDENTIAL_SETUP.md` - Credential configuration
 - `../docs/TROUBLESHOOTING.md` - Common issues
 
-***
-All of these can also be done through the GitHub web interface! 📝
