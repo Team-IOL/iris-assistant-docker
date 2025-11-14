@@ -170,27 +170,30 @@ docker-compose exec n8n n8n export:workflow --all --output=/tmp/workflows.json
 ---
 
 ## 📁 Repository Structure
-
+```
 iris-assistant-docker/
-├── .env.example # Environment template
+│
+├── .env.example # Environment configuration template
 ├── .gitignore # Git ignore rules
-├── docker-compose.yml # Docker configuration
+├── docker-compose.yml # Docker services configuration
+├── README.md # This file
 ├── CHANGELOG.md # Version history
-├── workflows/ # n8n workflow files
-│ ├── README.md
-│ ├── IRIS-AI-Assistant.json
-│ ├── Find-Crew-Member-Tool.json
-│ ├── Get-Crew-Details-Tool.json
-│ ├── Find-Available-Documents.json
-│ ├── Query-Crew-Lists-Tool.json
-│ └── Weekly-Access-Report.json
-└── docs/ # Documentation
-├── WORKFLOW_IMPORT.md # Import guide
+│
+├── workflows/ # n8n workflow JSON files
+│ ├── README.md # Workflow documentation
+│ ├── IRIS-AI-Assistant.json # Main AI assistant workflow
+│ ├── Find-Crew-Member-Tool.json # Crew search tool
+│ ├── Get-Crew-Details-Tool.json # Data retrieval tool
+│ ├── Find-Available-Documents.json # Document manager
+│ ├── Query-Crew-Lists-Tool.json # Reporting tool
+│ └── Weekly-Access-Report.json # Automated reporting
+│
+└── docs/ # Documentation files
+├── WORKFLOW_IMPORT.md # Step-by-step import guide
 ├── CREDENTIAL_SETUP.md # Credential configuration
-├── DEPLOYMENT.md # Production deployment
-└── TROUBLESHOOTING.md # Common issues
-
-
+├── DEPLOYMENT.md # Production deployment guide
+└── TROUBLESHOOTING.md # Common issues and solutions
+```
 ---
 
 ## 🔐 Security Best Practices
@@ -247,4 +250,5 @@ Copyright © 2025 Adamson Philippines / Team IOL
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
 **Current Version:** 2.0.0 (November 2025)
+
 
