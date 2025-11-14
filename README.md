@@ -247,3 +247,4 @@ Copyright © 2025 Adamson Philippines / Team IOL
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
 **Current Version:** 2.0.0 (November 2025)
+
