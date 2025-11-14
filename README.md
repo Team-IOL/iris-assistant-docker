@@ -67,15 +67,15 @@ cd iris-assistant-docker
 2. **Configure environment variables**
 - Copy `.env.example` to `.env`
 - Edit `.env` and set your `N8N_PASSWORD`
-
+```
 cp .env.example .env
-
+```
 Edit .env with your preferred text editor
 
 ### Step 2: Start Docker Containers
-
+```
 docker-compose up -d
-
+```
 Wait approximately 30 seconds for n8n to fully initialize.
 
 ### Step 3: Access n8n Interface
@@ -151,21 +151,25 @@ Send messages to your Telegram bot:
 ## 🔧 Management
 
 ### Stop the System
+```
 docker-compose down
-
+```
 
 ### Restart the System
+```
 docker-compose up -d
-
+```
 
 ### View Logs
+```
 docker-compose logs -f n8n
-
+```
 
 ### Backup Workflows
 Workflows are stored in the Docker volume. To backup:
+```
 docker-compose exec n8n n8n export:workflow --all --output=/tmp/workflows.json
-
+```
 
 ---
 
@@ -250,5 +254,6 @@ Copyright © 2025 Adamson Philippines / Team IOL
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
 **Current Version:** 2.0.0 (November 2025)
+
 
 
