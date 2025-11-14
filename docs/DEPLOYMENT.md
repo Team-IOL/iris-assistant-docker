@@ -11,33 +11,21 @@ This guide covers deploying IRIS Assistant from development (localhost) to a pro
 ---
 
 ## Production Architecture
-```
-┌─────────────────────────────────────────────────────────┐
-│ Production Server │
-│ │
-│ ┌────────────┐ ┌──────────────┐ │
-│ │ Nginx │─────▶│ n8n │ │
-│ │ (Proxy) │ │ (Docker) │ │
-│ └────────────┘ └──────────────┘ │
-│ │ │ │
-│ │ ▼ │
-│ │ ┌─────────────┐ │
-│ │ │ Workflows │ │
-│ │ └─────────────┘ │
-│ │ │ │
-└────────┼─────────────────────┼──────────────────────────┘
-│ │
-│ ▼
-Internet ┌──────────────────┐
-│ │ External APIs │
-│ │ - MySQL (Cloud) │
-▼ │ - Telegram │
-┌─────────┐ │ - Anthropic │
-│ Telegram│ │ - Mailjet │
-│ Users │ │ - Google Sheets │
-└─────────┘ └──────────────────┘
 
-```
+**Components:**
+
+### Server Layer
+- **Nginx Reverse Proxy:** Handles SSL/TLS termination, routes traffic to n8n
+- **n8n Container:** Docker container running the workflow automation engine
+- **Workflows:** 6 imported workflows handling various functions
+
+### External Connections
+- **Telegram Users:** End users interacting via Telegram bot
+- **MySQL Database:** Cloud-hosted IRIS crew management database (read-only)
+- **Anthropic API:** Claude Sonnet 4 for AI language processing
+- **Mailjet API:** Email delivery service
+- **Google Sheets:** Audit logging and reporting
+
 
 ---
 
